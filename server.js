@@ -27,10 +27,16 @@ connectDB();
 // Routes
 
 const authRoutes = require('./routes/authRoutes');
-
+const gigRoutes = require('./routes/gigRoutes');
+const attachmentRoutes = require('./routes/attachmentRoutes');
+const bidRoutes = require('./routes/bidRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 
 app.use('/api/auth', authRoutes);
-
+app.use('/api/gigs', gigRoutes);
+app.use('/api/attachments', attachmentRoutes);
+app.use('/api/bids', bidRoutes);
+app.use('/api/messages', messageRoutes);
 // Start server
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
