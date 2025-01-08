@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:latest
+    container_name: mongo-container
+    ports:
+      - "27017:27017"  # Map MongoDB to localhost
+    volumes:
+      - mongo_data:/data/db  # Persist MongoDB data locally
+
+volumes:
+  mongo_data:
