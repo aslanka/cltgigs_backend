@@ -7,7 +7,7 @@ const messageSchema = new mongoose.Schema({
     required: true
   },
   sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String }, // can be empty if message is just an attachment
+  content: { type: String, default: '' }, 
   created_at: { type: Date, default: Date.now }
 });
 

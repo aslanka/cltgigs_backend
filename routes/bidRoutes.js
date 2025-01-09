@@ -1,16 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getAllBidsForGig,
-  createBid,
-  getBidDetails
-} = require('../controllers/bidController');
-
 const { authenticate } = require('../middlewares/auth');
-const { messageUpload } = require('../middlewares/upload');
+const { createBid, getBidsForGig } = require('../controllers/bidController');
 
-router.get('/:gigId', getAllBidsForGig);
-router.post('/', authenticate, messageUpload.single('bidAttachment'), createBid);
-router.get('/details/:bidId', authenticate, getBidDetails);
+// Place a bid (must be logged in)
+router.post('/', authenticate, createBid);
+
+// Get bids for a gig (the gig owner sees all, non-owner sees only their own)
+router.get('/:gigId', authenticate, getBidsForGig);
 
 module.exports = router;

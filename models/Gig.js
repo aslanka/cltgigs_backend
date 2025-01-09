@@ -5,7 +5,8 @@ const gigSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
   price: { type: Number, required: true },
-  category_id: { type: Number }, // or reference a Category model if you have one
+  category_id: { type: Number }, // optional
+  zipcode: { type: String },     // optional zipcode field
   created_at: { type: Date, default: Date.now }
 });
 

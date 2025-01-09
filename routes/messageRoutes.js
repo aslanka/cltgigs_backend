@@ -1,13 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { sendMessage, getConversationMessages } = require('../controllers/messageController');
 const { authenticate } = require('../middlewares/auth');
-const { messageUpload } = require('../middlewares/upload');
+const {
+  getAllConversationsForUser,
+  getConversationMessages,
+  sendMessage
+} = require('../controllers/messageController');
 
-// Send message (or attachment)
-router.post('/', authenticate, messageUpload.single('messageAttachment'), sendMessage);
+// All user conversations
+router.get('/', authenticate, getAllConversationsForUser);
 
-// Get conversation messages
+// Messages in a specific conversation
 router.get('/:conversationId', authenticate, getConversationMessages);
+
+// Send a message in a conversation
+router.post('/', authenticate, sendMessage);
 
 module.exports = router;
