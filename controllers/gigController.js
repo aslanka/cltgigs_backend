@@ -21,9 +21,6 @@ exports.getAllGigs = async (req, res) => {
     if (category && category !== 'All') {
       filter.category = category;
     }
-    if(zipCode) {            // filter by zipcode if provided
-      filter.zipcode = zipCode;
-    }
 
     // Determine sort criteria
     let sortCriteria;
