@@ -154,30 +154,39 @@ const Home = () => {
         </div>
 
         {/* Gigs Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {gigs.map((gig) => (
-            <Card key={gig._id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-lg">{gig.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-600 mb-4 line-clamp-2">{gig.description}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-blue-600 font-semibold">${gig.price}</span>
-                  <Link
-                    to={`/gigs/${gig._id}`}
-                    className="bg-blue-100 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-200 transition-colors"
-                  >
-                    View Details
-                  </Link>
-                </div>
-                <div className="mt-4 text-sm text-gray-500">
-                  Posted by: {gig.user_id?.name || 'Unknown'}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {gigs.map((gig) => (
+    <Card key={gig._id} className="hover:shadow-lg transition-shadow">
+      <CardHeader>
+        <CardTitle className="text-lg">{gig.title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Display image if available */}
+        {gig.attachment && (
+          <img
+            crossOrigin='anonymous'
+            src={`http://localhost:4000/${gig.attachment.file_url}`} 
+            alt={gig.title}
+            className="w-full h-48 object-cover mb-4 rounded"
+          />
+        )}
+        <p className="text-gray-600 mb-4 line-clamp-2">{gig.description}</p>
+        <div className="flex justify-between items-center">
+          <span className="text-blue-600 font-semibold">${gig.price}</span>
+          <Link
+            to={`/gigs/${gig._id}`}
+            className="bg-blue-100 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-200 transition-colors"
+          >
+            View Details
+          </Link>
         </div>
+        <div className="mt-4 text-sm text-gray-500">
+          Posted by: {gig.user_id?.name || 'Unknown'}
+        </div>
+      </CardContent>
+    </Card>
+  ))}
+</div>
 
         {/* Pagination Controls */}
         <div className="flex justify-center items-center space-x-4 mt-8">

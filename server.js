@@ -17,7 +17,22 @@ const attachmentRoutes = require('./routes/attachmentRoutes');
 
 // Init
 const app = express();
-app.use(cors());
+
+const allowedOrigins = ['http://localhost:4000', 'http://localhost:5173'];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use(xss());
 app.use(express.json());
@@ -30,6 +45,13 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Static folder for uploaded images
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Origin', '*');
+
+  next();
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect Mongo

@@ -13,6 +13,7 @@ import GigDetails from './pages/GigDetails';
 import CreateGig from './pages/CreateGig';
 import EditGig from './pages/EditGig';
 import Profile from './pages/Profile';
+import Dashboard from './pages/Dashboard';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
@@ -56,7 +57,15 @@ function App() {
             path="/profile"
             element={
               <ProtectedRoute>
-                <MyGigs />
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
               </ProtectedRoute>
             }
           />

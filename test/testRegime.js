@@ -3,6 +3,15 @@ require('dotenv').config();
 
 const API_BASE = 'http://localhost:4000/api';
 
+// CORS configuration
+const corsOptions = {
+  origin: ['http://localhost:4000'], // Add your frontend's URL here
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+  credentials: true // Allow cookies if needed
+};
+
+app.use(cors(corsOptions));
+
 let users = [];         // { id, email, password, token }
 let gigs = [];          // { id, ownerId }
 let bids = [];          // { id, gigId, bidderId }

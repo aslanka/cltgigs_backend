@@ -24,7 +24,6 @@ exports.getAllGigs = async (req, res) => {
 
     // Determine sort criteria
     let sortCriteria;
-    // If using full-text search, sort by relevance score first
     if (searchTerm) {
       sortCriteria = { score: { $meta: "textScore" } };
     } else {
@@ -45,18 +44,15 @@ exports.getAllGigs = async (req, res) => {
       }
     }
 
-    // Convert page and limit to numbers and calculate skip
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    // Query database with filters, sorting, and pagination
     let query = Gig.find(filter)
       .populate('user_id', 'name')
       .skip(skip)
       .limit(limitNum);
 
-    // If searchTerm provided, include projection of text score and sort by it
     if (searchTerm) {
       query = query
         .sort(sortCriteria)
@@ -67,16 +63,37 @@ exports.getAllGigs = async (req, res) => {
 
     const gigsPromise = query;
     const countPromise = Gig.countDocuments(filter);
-
-    // Execute queries in parallel
     const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
 
-    return res.json({ gigs, total });
+    // Fetch attachments for the retrieved gigs
+    const gigIds = gigs.map(gig => gig._id);
+    const attachments = await Attachment.find({
+      type: 'gig',
+      foreign_key_id: { $in: gigIds }
+    });
+
+    // Group attachments by gig ID
+    const attachmentsByGigId = {};
+    attachments.forEach(att => {
+      // Assuming one attachment per gig for simplicity.
+      // If multiple attachments per gig, you can store an array.
+      attachmentsByGigId[att.foreign_key_id] = att;
+    });
+
+    // Combine attachment data with gigs
+    const gigsWithAttachments = gigs.map(gig => {
+      const gigObj = gig.toObject();
+      gigObj.attachment = attachmentsByGigId[gig._id] || null;
+      return gigObj;
+    });
+
+    return res.json({ gigs: gigsWithAttachments, total });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 exports.createGig = async (req, res) => {
   try {
@@ -89,7 +106,7 @@ exports.createGig = async (req, res) => {
       description,
       price,
       category_id,
-      zipcode // store zipcode
+      zipcode
     });
     await gig.save();
 
@@ -108,6 +125,7 @@ exports.createGig = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 exports.getGigDetails = async (req, res) => {
   try {
