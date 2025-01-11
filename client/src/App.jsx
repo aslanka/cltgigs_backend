@@ -8,11 +8,11 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import MyGigs from './pages/MyGigs';
 import Messages from './pages/Messages';
-import PublicProfile from './pages/PublicProfile';
+import CommunityCard from './pages/CommunityCard';
 import GigDetails from './pages/GigDetails';
 import CreateGig from './pages/CreateGig';
 import EditGig from './pages/EditGig';
-import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 
 // Protected
@@ -54,10 +54,10 @@ function App() {
             }
           />
           <Route
-            path="/profile"
+            path="/settings"
             element={
               <ProtectedRoute>
-                <Profile />
+                <Settings />
               </ProtectedRoute>
             }
           />
@@ -66,6 +66,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/communitycard/:userId"
+            element={
+              <ProtectedRoute>
+                <CommunityCard />
               </ProtectedRoute>
             }
           />
@@ -78,7 +86,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/profile/:userId" element={<PublicProfile />} />
+          <Route path="/profile/:userId" element={<CommunityCard />} />
         </Routes>
       </div>
     </div>
