@@ -12,7 +12,7 @@ exports.uploadAttachmentGeneral = async (req, res) => {
     const attachment = new Attachment({
       type,
       foreign_key_id,
-      file_url: req.file.path
+      file_url: `/uploads/${req.file.filename}`
     });
     await attachment.save();
     return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id });

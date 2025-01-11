@@ -62,7 +62,7 @@ function Navbar() {
                   {profile?.profile_pic_url ? (
                     <img
                       crossOrigin='anonymous'
-                      src={profile.profile_pic_url}
+                      src={'http://localhost:4000' + profile.profile_pic_url}
                       alt="Profile"
                       className="w-10 h-10 rounded-full object-cover"
                     />
