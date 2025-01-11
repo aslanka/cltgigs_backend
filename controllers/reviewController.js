@@ -5,7 +5,9 @@ const User = require('../models/User');
 exports.getReviewsByUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const reviews = await Review.find({ user_id: userId }).sort({ date: -1 });
+    const reviews = await Review.find({ user_id: userId })
+      .populate('reviewer_id', 'name profile_pic_url')  // populate reviewer fields
+      .sort({ date: -1 });
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
