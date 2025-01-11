@@ -16,10 +16,24 @@ router.get('/:userId', async (req, res) => {
   }
 });
 
-// Private user profile (dashboard) - example
-router.get('/me/dashboard', authenticate, async (req, res) => {
-  // Return user data + stats for private dashboard
-  // ...
+// Update user profile
+router.put('/:userId', authenticate, async (req, res) => {
+  try {
+    if(req.user.userId !== req.params.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { profile_pic_url, name, bio, location, portfolio } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      { profile_pic_url, name, bio, location, portfolio },
+      { new: true }
+    );
+    if(!updatedUser) return res.status(404).json({ error: 'User not found' });
+    res.json(updatedUser);
+  } catch(err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 module.exports = router;

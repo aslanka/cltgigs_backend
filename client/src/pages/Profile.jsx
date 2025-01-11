@@ -55,13 +55,25 @@ function Profile() {
       formData.append("type", "profile");
       formData.append("foreign_key_id", userData.userId);
       formData.append("file", selectedFile);
-      await axios.post("/attachments", formData);
+      
+      // Upload the profile picture via attachments route
+      const res = await axios.post("/attachments", formData);
+      
+      // Fetch the attachment details to get file_url
+      const attachmentRes = await axios.get(`/attachments/${res.data.attachmentId}`);
+      const profilePicUrl = attachmentRes.data.attachment.file_url;
+      
+      // Update the user profile with new profile_pic_url
+      await axios.put(`/users/${userData.userId}`, { profile_pic_url: profilePicUrl });
+      
       alert("Profile pic uploaded!");
+      fetchProfile(); // Refresh profile info
     } catch (err) {
       console.error(err);
       alert("Error uploading profile pic");
     }
   };
+  
 
   if (!profile) return <div>Loading profile...</div>;
 
