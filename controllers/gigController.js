@@ -1,6 +1,7 @@
 const Gig = require('../models/Gig');
 const Attachment = require('../models/Attachment');
 const { resizeImage } = require('../middlewares/upload');
+const { findZipcodesWithin } = require('../services/zipcodeService');
 
 exports.getAllGigs = async (req, res) => {
   try {
@@ -10,7 +11,9 @@ exports.getAllGigs = async (req, res) => {
       category = 'All',
       sortBy = 'date_desc',
       page = 1,
-      limit = 20
+      limit = 20,
+      zipCode,   // new query parameter for zip code
+      distance   // new query parameter for distance in miles
     } = req.query;
 
     // Build MongoDB filter
@@ -20,6 +23,18 @@ exports.getAllGigs = async (req, res) => {
     }
     if (category && category !== 'All') {
       filter.category = category;
+    }
+
+    // If zipCode and distance provided, filter gigs by nearby zip codes
+    if (zipCode && distance) {
+      try {
+        const nearbyZips = await findZipcodesWithin(zipCode, parseFloat(distance));
+        // Add condition to filter gigs by these zip codes
+        filter.zipcode = { $in: nearbyZips };
+      } catch (error) {
+        console.error('Error fetching nearby zip codes:', error);
+        // Optionally handle error (e.g., return error response or proceed without zipcode filtering)
+      }
     }
 
     // Determine sort criteria
@@ -48,19 +63,20 @@ exports.getAllGigs = async (req, res) => {
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
+    // Build query with filter, sorting, pagination, and population
     let query = Gig.find(filter)
       .populate('user_id', 'name')
       .skip(skip)
       .limit(limitNum);
 
+    // Apply sorting and text score selection if searching by text
     if (searchTerm) {
-      query = query
-        .sort(sortCriteria)
-        .select({ score: { $meta: "textScore" } });
+      query = query.sort(sortCriteria).select({ score: { $meta: "textScore" } });
     } else {
       query = query.sort(sortCriteria);
     }
 
+    // Execute query and count in parallel
     const gigsPromise = query;
     const countPromise = Gig.countDocuments(filter);
     const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
@@ -75,8 +91,6 @@ exports.getAllGigs = async (req, res) => {
     // Group attachments by gig ID
     const attachmentsByGigId = {};
     attachments.forEach(att => {
-      // Assuming one attachment per gig for simplicity.
-      // If multiple attachments per gig, you can store an array.
       attachmentsByGigId[att.foreign_key_id] = att;
     });
 

@@ -30,16 +30,24 @@ const Home = () => {
 
   const fetchGigs = async () => {
     try {
-      const params = { searchTerm, category, sortBy, page, limit };
+      const params = { 
+        searchTerm, 
+        category, 
+        sortBy, 
+        page, 
+        limit,
+        zipCode,      // include zipCode
+        distance      // include distance
+      };
       const res = await axios.get('/gigs', { params });
   
-      // Safely update the state with fallbacks in case of unexpected response structure
       setGigs(res.data?.gigs || []);
       setTotalGigs(res.data?.total || 0);
     } catch (err) {
       console.error(err);
     }
   };
+  
   
 
   const handleCreateGig = () => {

@@ -73,9 +73,7 @@ function App() {
         <Route
           path="/communitycard/:userId"
           element={
-            <ProtectedRoute>
               <CommunityCard />
-            </ProtectedRoute>
           }
         />
 
