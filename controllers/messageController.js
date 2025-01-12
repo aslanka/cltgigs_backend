@@ -92,7 +92,7 @@ exports.getConversationMessages = async (req, res) => {
 // POST /api/messages (send a new message)
 exports.sendMessage = async (req, res) => {
   try {
-    const { conversationId, content } = req.body;
+    const { conversationId, content, file_url } = req.body;
 
     if (!conversationId) {
       return res.status(400).json({ error: 'Missing conversationId' });
@@ -123,20 +123,21 @@ exports.sendMessage = async (req, res) => {
       conversation_id: conversationId,
       sender_id: userId,
       content,
+      file_url
     });
     await newMsg.save();
 
-    // Use getIO() instead of direct io
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
       _id: newMsg._id,
       conversation_id: newMsg.conversation_id,
       sender_id: userId,
       content: newMsg.content,
+      file_url: newMsg.file_url,
       created_at: newMsg.created_at,
     });
 
-    return res.status(201).json({ message: 'Message sent' });
+    return res.status(201).json({ message: 'Message sent', newMsg });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });

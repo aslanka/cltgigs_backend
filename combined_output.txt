@@ -640,7 +640,7 @@ exports.sendMessage = async (req, res) => {
     });
     await newMsg.save();
 
-    // Emit an event using the imported io instance
+    // Use getIO() instead of direct io
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
       _id: newMsg._id,
@@ -657,7 +657,7 @@ exports.sendMessage = async (req, res) => {
   }
 };
 
-// DELETE /api/messages/:messageId (delete a message)
+// In the deleteMessage function
 exports.deleteMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
@@ -673,7 +673,9 @@ exports.deleteMessage = async (req, res) => {
     }
 
     await Message.deleteOne({ _id: messageId });
-    // Optionally broadcast a "messageDeleted" event
+
+    // Use getIO() instead of direct io
+    const io = getIO();
     io.to(msg.conversation_id.toString()).emit('messageDeleted', { messageId });
 
     res.json({ message: 'Message deleted' });
@@ -1402,55 +1404,56 @@ passport.use(
 --- utils\socketHandlers.js ---
 // utils/socketHandlers.js
 const jwt = require('jsonwebtoken');
+const { getIO } = require('./socketIOInstance');
 
 // We can store connected users by userId -> socketId if needed
 let onlineUsers = {}; // { userId: socketId }
 
 function setupSocketIO(io) {
-  // Middleware to verify JWT on connection
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('No token provided'));
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
-      socket.userId = decoded.userId;
-      return next();
-    } catch (err) {
-      return next(new Error('Invalid token'));
-    }
-  });
-
-  io.on('connection', (socket) => {
-    // Store the socket for the connected user
-    onlineUsers[socket.userId] = socket.id;
-
-    socket.on('joinConversation', (conversationId) => {
-      // The user joins a specific conversation room
-      socket.join(conversationId);
+    // Middleware to verify JWT on connection
+    io.use((socket, next) => {
+      const token = socket.handshake.auth?.token;
+      if (!token) return next(new Error('No token provided'));
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+        socket.userId = decoded.userId;
+        return next();
+      } catch (err) {
+        return next(new Error('Invalid token'));
+      }
     });
-
-    // Listen for typing indicator
-    socket.on('typing', ({ conversationId }) => {
-      socket.to(conversationId).emit('typing', {
-        userId: socket.userId,
-        conversationId,
+  
+    io.on('connection', (socket) => {
+      // Store the socket for the connected user
+      onlineUsers[socket.userId] = socket.id;
+  
+      socket.on('joinConversation', (conversationId) => {
+        // The user joins a specific conversation room
+        socket.join(conversationId);
+      });
+  
+      // Listen for typing indicator
+      socket.on('typing', ({ conversationId }) => {
+        socket.to(conversationId).emit('typing', {
+          userId: socket.userId,
+          conversationId,
+        });
+      });
+  
+      // Listen for new message
+      socket.on('newMessage', (messageData) => {
+        // Broadcast to all other users in the room
+        socket.to(messageData.conversationId).emit('newMessage', messageData);
+      });
+  
+      socket.on('disconnect', () => {
+        // Cleanup
+        delete onlineUsers[socket.userId];
       });
     });
-
-    // Listen for new message
-    socket.on('newMessage', (messageData) => {
-      // Broadcast to all other users in the room
-      socket.to(messageData.conversationId).emit('newMessage', messageData);
-    });
-
-    socket.on('disconnect', () => {
-      // Cleanup
-      delete onlineUsers[socket.userId];
-    });
-  });
-}
-
-module.exports = { setupSocketIO };
+  }
+  
+  module.exports = { setupSocketIO };
 
 
 --- utils\socketIOInstance.js ---

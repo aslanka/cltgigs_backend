@@ -4,6 +4,8 @@ import { AuthContext } from '../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import moment from 'moment';
+import ProfilePicture from '../components/ProfilePicture';
+import Attachment from '../components/Attachment';
 
 export default function Messages() {
   const { token, userData } = useContext(AuthContext);
@@ -15,6 +17,7 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [attachment, setAttachment] = useState(null);
+  const [isUploading, setIsUploading] = useState(false); // Upload indicator state
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,26 +109,36 @@ export default function Messages() {
     if (!newMessage.trim() && !attachment) return;
 
     try {
+      let file_url = null;
       if (attachment) {
+        setIsUploading(true); // Show upload indicator
         const formData = new FormData();
         formData.append('file', attachment);
         formData.append('type', 'message');
         formData.append('foreign_key_id', activeConversation._id);
-        await axios.post('/attachments', formData, {
+        const response = await axios.post('/attachments', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+        file_url = response.data.file_url;
+        setIsUploading(false); // Hide upload indicator
       }
 
       await axios.post('/messages', {
         conversationId: activeConversation._id,
         content: newMessage,
+        file_url,
       });
 
       setNewMessage('');
-      setAttachment(null);
+      setAttachment(null); // Clear attachment after sending
     } catch (err) {
       console.error('Error sending message:', err);
+      setIsUploading(false); // Hide upload indicator on error
     }
+  };
+
+  const handleRemoveAttachment = () => {
+    setAttachment(null);
   };
 
   // Delete message
@@ -258,10 +271,10 @@ export default function Messages() {
                         className="flex items-start space-x-4 cursor-pointer"
                         onClick={handleViewProfile}
                       >
-                        <img
-                          src="/api/placeholder/50/50"
-                          alt="Profile"
-                          className="rounded-full"
+                        <ProfilePicture
+                          profilePicUrl={activeConversation.otherUserPic}
+                          name={activeConversation.otherUserName}
+                          size="10"
                         />
                         <div>
                           <div className="flex items-center space-x-2">
@@ -344,25 +357,7 @@ export default function Messages() {
                               >
                                 {msg.content}
                               </p>
-                              {msg.file_url && (
-                                <div className="mt-2 space-y-1">
-                                  <div
-                                    className={`flex items-center space-x-2 ${
-                                      isSelf ? 'text-blue-200' : 'text-gray-600'
-                                    } text-sm`}
-                                  >
-                                    <span>📎</span>
-                                    <a
-                                      href={msg.file_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline"
-                                    >
-                                      View Attachment
-                                    </a>
-                                  </div>
-                                </div>
-                              )}
+                              <Attachment fileUrl={msg.file_url} />
                               <p
                                 className={`text-xs ${
                                   isSelf ? 'text-blue-200' : 'text-gray-500'
@@ -389,6 +384,33 @@ export default function Messages() {
                     }`}
                   >
                     <div className="flex flex-col space-y-2">
+                      {/* Attachment Indicator */}
+                      {attachment && (
+                        <div className="relative p-2 bg-gray-100 rounded-lg">
+                          <img
+                            src={URL.createObjectURL(attachment)}
+                            alt="Attachment"
+                            className="max-w-full h-32 object-cover rounded-lg"
+                          />
+                          <button
+                            onClick={handleRemoveAttachment}
+                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Upload Indicator */}
+                      {isUploading && (
+                        <div className="flex items-center justify-center p-2 bg-gray-100 rounded-lg">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                          <span className="ml-2 text-sm text-gray-600">
+                            Uploading...
+                          </span>
+                        </div>
+                      )}
+
                       <div className="flex space-x-2">
                         <input
                           type="text"
@@ -416,7 +438,7 @@ export default function Messages() {
                         <button
                           onClick={handleSendMessage}
                           className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-                          disabled={activeConversation.isBlocked}
+                          disabled={activeConversation.isBlocked || isUploading}
                         >
                           Send
                         </button>
