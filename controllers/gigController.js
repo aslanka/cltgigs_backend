@@ -1,61 +1,48 @@
 const Gig = require('../models/Gig');
+const Bid = require('../models/Bid');
 const Attachment = require('../models/Attachment');
 const { resizeImage } = require('../middlewares/upload');
-const { findZipcodesWithin } = require('../services/zipcodeService');
+const { findZipcodesWithinWithDistance } = require('../services/zipcodeService');
 
 exports.getAllGigs = async (req, res) => {
   try {
-    // Extract query parameters with defaults
     const {
       searchTerm = '',
       category = 'All',
       sortBy = 'date_desc',
       page = 1,
       limit = 20,
-      zipCode,   // new query parameter for zip code
-      distance   // new query parameter for distance in miles
+      zipCode,
+      distance
     } = req.query;
 
-    // Build MongoDB filter
     const filter = {};
-    if (searchTerm) {
-      filter.$text = { $search: searchTerm };
-    }
-    if (category && category !== 'All') {
-      filter.category = category;
-    }
+    if (searchTerm) filter.$text = { $search: searchTerm };
+    if (category && category !== 'All') filter.category = category;
 
-    // If zipCode and distance provided, filter gigs by nearby zip codes
+    let distanceMap = {};
     if (zipCode && distance) {
       try {
-        const nearbyZips = await findZipcodesWithin(zipCode, parseFloat(distance));
-        // Add condition to filter gigs by these zip codes
-        filter.zipcode = { $in: nearbyZips };
+        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(zipCode, parseFloat(distance));
+        filter.zipcode = { $in: nearbyZipsWithDistance.map(nz => nz.zip) };
+        nearbyZipsWithDistance.forEach(nz => {
+          distanceMap[nz.zip] = nz.distance;
+        });
       } catch (error) {
         console.error('Error fetching nearby zip codes:', error);
-        // Optionally handle error (e.g., return error response or proceed without zipcode filtering)
       }
     }
 
-    // Determine sort criteria
     let sortCriteria;
     if (searchTerm) {
       sortCriteria = { score: { $meta: "textScore" } };
     } else {
       switch (sortBy) {
-        case 'price_asc':
-          sortCriteria = { price: 1 };
-          break;
-        case 'price_desc':
-          sortCriteria = { price: -1 };
-          break;
-        case 'date_asc':
-          sortCriteria = { created_at: 1 };
-          break;
+        case 'price_asc': sortCriteria = { price: 1 }; break;
+        case 'price_desc': sortCriteria = { price: -1 }; break;
+        case 'date_asc': sortCriteria = { created_at: 1 }; break;
         case 'date_desc':
-        default:
-          sortCriteria = { created_at: -1 };
-          break;
+        default: sortCriteria = { created_at: -1 }; break;
       }
     }
 
@@ -63,42 +50,57 @@ exports.getAllGigs = async (req, res) => {
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build query with filter, sorting, pagination, and population
     let query = Gig.find(filter)
       .populate('user_id', 'name')
       .skip(skip)
       .limit(limitNum);
 
-    // Apply sorting and text score selection if searching by text
     if (searchTerm) {
       query = query.sort(sortCriteria).select({ score: { $meta: "textScore" } });
     } else {
       query = query.sort(sortCriteria);
     }
 
-    // Execute query and count in parallel
     const gigsPromise = query;
     const countPromise = Gig.countDocuments(filter);
     const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
 
-    // Fetch attachments for the retrieved gigs
+    // Fetch attachments for gigs
     const gigIds = gigs.map(gig => gig._id);
     const attachments = await Attachment.find({
       type: 'gig',
       foreign_key_id: { $in: gigIds }
     });
 
-    // Group attachments by gig ID
     const attachmentsByGigId = {};
     attachments.forEach(att => {
       attachmentsByGigId[att.foreign_key_id] = att;
     });
 
-    // Combine attachment data with gigs
     const gigsWithAttachments = gigs.map(gig => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
+      // Attach distance from precomputed map if available
+      if (distanceMap[gig.zipcode]) {
+        gigObj.distance = distanceMap[gig.zipcode];
+      }
       return gigObj;
+    });
+
+    // Aggregate bid counts for all fetched gigs
+    const bidsAgg = await Bid.aggregate([
+      { $match: { gig_id: { $in: gigIds } } },
+      { $group: { _id: "$gig_id", count: { $sum: 1 } } }
+    ]);
+
+    let bidCountMap = {};
+    bidsAgg.forEach(b => {
+      bidCountMap[b._id.toString()] = b.count;
+    });
+
+    // Attach bid counts to each gig
+    gigsWithAttachments.forEach(gig => {
+      gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });
 
     return res.json({ gigs: gigsWithAttachments, total });

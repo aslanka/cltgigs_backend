@@ -19,6 +19,7 @@ const bidRoutes = require('./routes/bidRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 // Initialize Express app
 const app = express();
@@ -98,6 +99,7 @@ app.use('/api/bids', bidRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/reports', reportRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

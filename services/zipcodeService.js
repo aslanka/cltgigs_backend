@@ -24,3 +24,33 @@ async function findZipcodesWithin(zip, radiusInMiles) {
 }
 
 module.exports = { findZipcodesWithin };
+
+async function findZipcodesWithinWithDistance(zip, radiusInMiles) {
+    const origin = await Zipcode.findOne({ zip });
+    if (!origin) throw new Error('Origin zip code not found');
+  
+    const radiusInMeters = radiusInMiles * 1609.34;
+  
+    const nearbyZips = await Zipcode.aggregate([
+      {
+        $geoNear: {
+          near: origin.location,
+          distanceField: "distance", // distance in meters
+          spherical: true,
+          maxDistance: radiusInMeters,
+          query: {}
+        }
+      },
+      {
+        $project: {
+          zip: 1,
+          // convert distance to miles
+          distance: { $divide: ["$distance", 1609.34] }
+        }
+      }
+    ]);
+  
+    return nearbyZips; // Array of objects: { zip, distance }
+  }
+  
+  module.exports = { findZipcodesWithinWithDistance };

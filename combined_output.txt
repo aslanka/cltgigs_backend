@@ -300,48 +300,50 @@ exports.getMyBids = async (req, res) => {
 
 --- controllers\gigController.js ---
 const Gig = require('../models/Gig');
+const Bid = require('../models/Bid');
 const Attachment = require('../models/Attachment');
 const { resizeImage } = require('../middlewares/upload');
+const { findZipcodesWithinWithDistance } = require('../services/zipcodeService');
 
 exports.getAllGigs = async (req, res) => {
   try {
-    // Extract query parameters with defaults
     const {
       searchTerm = '',
       category = 'All',
       sortBy = 'date_desc',
       page = 1,
-      limit = 20
+      limit = 20,
+      zipCode,
+      distance
     } = req.query;
 
-    // Build MongoDB filter
     const filter = {};
-    if (searchTerm) {
-      filter.$text = { $search: searchTerm };
-    }
-    if (category && category !== 'All') {
-      filter.category = category;
+    if (searchTerm) filter.$text = { $search: searchTerm };
+    if (category && category !== 'All') filter.category = category;
+
+    let distanceMap = {};
+    if (zipCode && distance) {
+      try {
+        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(zipCode, parseFloat(distance));
+        filter.zipcode = { $in: nearbyZipsWithDistance.map(nz => nz.zip) };
+        nearbyZipsWithDistance.forEach(nz => {
+          distanceMap[nz.zip] = nz.distance;
+        });
+      } catch (error) {
+        console.error('Error fetching nearby zip codes:', error);
+      }
     }
 
-    // Determine sort criteria
     let sortCriteria;
     if (searchTerm) {
       sortCriteria = { score: { $meta: "textScore" } };
     } else {
       switch (sortBy) {
-        case 'price_asc':
-          sortCriteria = { price: 1 };
-          break;
-        case 'price_desc':
-          sortCriteria = { price: -1 };
-          break;
-        case 'date_asc':
-          sortCriteria = { created_at: 1 };
-          break;
+        case 'price_asc': sortCriteria = { price: 1 }; break;
+        case 'price_desc': sortCriteria = { price: -1 }; break;
+        case 'date_asc': sortCriteria = { created_at: 1 }; break;
         case 'date_desc':
-        default:
-          sortCriteria = { created_at: -1 };
-          break;
+        default: sortCriteria = { created_at: -1 }; break;
       }
     }
 
@@ -355,9 +357,7 @@ exports.getAllGigs = async (req, res) => {
       .limit(limitNum);
 
     if (searchTerm) {
-      query = query
-        .sort(sortCriteria)
-        .select({ score: { $meta: "textScore" } });
+      query = query.sort(sortCriteria).select({ score: { $meta: "textScore" } });
     } else {
       query = query.sort(sortCriteria);
     }
@@ -366,26 +366,42 @@ exports.getAllGigs = async (req, res) => {
     const countPromise = Gig.countDocuments(filter);
     const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
 
-    // Fetch attachments for the retrieved gigs
+    // Fetch attachments for gigs
     const gigIds = gigs.map(gig => gig._id);
     const attachments = await Attachment.find({
       type: 'gig',
       foreign_key_id: { $in: gigIds }
     });
 
-    // Group attachments by gig ID
     const attachmentsByGigId = {};
     attachments.forEach(att => {
-      // Assuming one attachment per gig for simplicity.
-      // If multiple attachments per gig, you can store an array.
       attachmentsByGigId[att.foreign_key_id] = att;
     });
 
-    // Combine attachment data with gigs
     const gigsWithAttachments = gigs.map(gig => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
+      // Attach distance from precomputed map if available
+      if (distanceMap[gig.zipcode]) {
+        gigObj.distance = distanceMap[gig.zipcode];
+      }
       return gigObj;
+    });
+
+    // Aggregate bid counts for all fetched gigs
+    const bidsAgg = await Bid.aggregate([
+      { $match: { gig_id: { $in: gigIds } } },
+      { $group: { _id: "$gig_id", count: { $sum: 1 } } }
+    ]);
+
+    let bidCountMap = {};
+    bidsAgg.forEach(b => {
+      bidCountMap[b._id.toString()] = b.count;
+    });
+
+    // Attach bid counts to each gig
+    gigsWithAttachments.forEach(gig => {
+      gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });
 
     return res.json({ gigs: gigsWithAttachments, total });
@@ -864,20 +880,71 @@ exports.getPublicProfile = async (req, res) => {
   }
 };
 
-// Update user profile (only owner can update)
-exports.updateProfile = async (req, res) => {
+// controllers/userController.js
+exports.uploadCertifications = async (req, res) => {
   try {
-    if (req.user.userId !== req.params.userId) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    const { profile_pic_url, name, bio, location, portfolio } = req.body;
-    const updatedUser = await User.findByIdAndUpdate(
-      req.params.userId,
-      { profile_pic_url, name, bio, location, portfolio },
+    const { userId } = req.params;
+    const files = req.files;
+
+    const fileUrls = files.map((file) => `/uploads/${file.filename}`);
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { certifications: { $each: fileUrls } } },
       { new: true }
     );
-    if (!updatedUser) return res.status(404).json({ error: 'User not found' });
-    res.json(updatedUser);
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updatedData = req.body;
+
+    // Exclude fields that should not be updated directly
+    delete updatedData.name; 
+
+    const user = await User.findByIdAndUpdate(userId, updatedData, { new: true });
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.uploadPortfolio = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const files = req.files;
+
+    const fileUrls = files.map((file) => `/uploads/${file.filename}`);
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { portfolio: { $each: fileUrls } } },
+      { new: true }
+    );
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.removePortfolioItem = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { fileUrl } = req.body;
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $pull: { portfolio: fileUrl } },
+      { new: true }
+    );
+    res.json(user);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -1033,6 +1100,8 @@ const gigSchema = new mongoose.Schema({
   zipcode: { type: String },     // optional zipcode field
   created_at: { type: Date, default: Date.now }
 });
+// In your Gig schema (models/Gig.js)
+gigSchema.index({ zipcode: 1 });
 
 module.exports = mongoose.model('Gig', gigSchema);
 
@@ -1089,21 +1158,92 @@ module.exports = mongoose.model('Review', reviewSchema);
 
 
 --- models\User.js ---
+// models/User.js
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
+  // Personal Information
   name: { type: String, required: true },
+  profile_pic_url: { type: String },
+  tagline: { type: String },
+
+  // Contact Information
+  preferred_communication: { type: String, enum: ['platform', 'email', 'phone'] },
+  social_media_links: { type: [String], default: [] },
+  location: { type: String },
+  service_area: { type: String },
+
+  // Skills and Expertise
+  services_offered: { type: [String], default: [] }, // Tags
+  specializations: { type: [String], default: [] }, // Tags
+  certifications: { type: [String], default: [] }, // File URLs
+  experience: { type: Number, default: 0 },
+
+  // Availability
+  working_hours: { type: String },
+  calendar_link: { type: String },
+
+  // Portfolio/Work Samples
+  portfolio: { type: [String], default: [] }, // File URLs
+  testimonials: { type: [String], default: [] }, // Testimonial texts
+
+  // Reviews and Ratings
+  reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Review' }],
+  rating: { type: Number, default: 0 },
+
+  // Pricing and Payment Details
+  rate_card: { type: String },
+  payment_methods: { type: [String], default: [] },
+
+  // About Section
+  bio: { type: String },
+
+  // Trust and Safety
+  background_check: { type: Boolean, default: false },
+  insurance_details: { type: String },
+
+  // Platform-Specific Features
+  response_time: { type: String },
+  completed_jobs: { type: Number, default: 0 },
+  verified_badges: { type: [String], default: [] },
+
+  // Call-to-Action
+  request_service_link: { type: String },
+  is_favorite: { type: Boolean, default: false },
+
+  // Additional Details
+  languages_spoken: { type: [String], default: [] }, // Tags
+  faqs: { type: [String], default: [] },
+  disclaimers: { type: String },
+
+  // Default Fields
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  profile_pic_url: { type: String },
-  bio: { type: String },
-  location: { type: String },
-  portfolio: { type: String },
-  rating: { type: Number, default: 0 },
   created_at: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('User', userSchema);
+
+--- models\Zipcode.js ---
+// models/Zipcode.js
+const mongoose = require('mongoose');
+
+const zipcodeSchema = new mongoose.Schema({
+  zip: { type: String, required: true, unique: true },
+  location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { 
+      type: [Number], // [longitude, latitude]
+      required: true
+    }
+  }
+});
+
+// Create a 2dsphere index for geospatial queries
+zipcodeSchema.index({ location: '2dsphere' });
+
+module.exports = mongoose.model('Zipcode', zipcodeSchema);
+
 
 --- routes\attachmentRoutes.js ---
 const express = require('express');
@@ -1297,11 +1437,25 @@ const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
 const userController = require('../controllers/userController');
 
+
+const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
+const { messageUpload } = require('../middlewares/upload');
+
 // Public profile
 router.get('/:userId', userController.getPublicProfile);
 
+router.post('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+
 // Update user profile
 router.put('/:userId', authenticate, userController.updateProfile);
+
+// routes/userRoutes.js
+router.post('/:userId/certifications', authenticate, messageUpload.array('certifications'), uploadCertifications);
+router.put('/:userId', authenticate, updateProfile);
+
+// In your Express routes:
+router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
+
 
 module.exports = router;
 
