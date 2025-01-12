@@ -1,7 +1,9 @@
 
 --- controllers\attachmentController.js ---
+// controllers/attachmentController.js
 const Attachment = require('../models/Attachment');
 const fs = require('fs');
+const path = require('path');
 
 exports.uploadAttachmentGeneral = async (req, res) => {
   try {
@@ -17,7 +19,7 @@ exports.uploadAttachmentGeneral = async (req, res) => {
       file_url: `/uploads/${req.file.filename}`
     });
     await attachment.save();
-    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id });
+    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id, file_url: attachment.file_url });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
@@ -31,7 +33,6 @@ exports.getAttachment = async (req, res) => {
     if (!attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
-    // You can stream the file or return the file path
     return res.json({ attachment });
   } catch (err) {
     console.error(err);
@@ -47,11 +48,7 @@ exports.deleteAttachment = async (req, res) => {
       return res.status(404).json({ error: 'Attachment not found' });
     }
 
-    // Only allow if user is the owner (would require additional logic to map attachment to user)
-    // For simplicity, let's skip that check or assume admin privileges:
-
-    // Delete file from disk
-    fs.unlink(attachment.file_url, (err) => {
+    fs.unlink(path.join(__dirname, '..', attachment.file_url), (err) => {
       if (err) console.error(err);
     });
 
@@ -62,7 +59,6 @@ exports.deleteAttachment = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
-
 
 --- controllers\authController.js ---
 const bcrypt = require('bcrypt');
@@ -606,7 +602,7 @@ exports.getConversationMessages = async (req, res) => {
 // POST /api/messages (send a new message)
 exports.sendMessage = async (req, res) => {
   try {
-    const { conversationId, content } = req.body;
+    const { conversationId, content, file_url } = req.body;
 
     if (!conversationId) {
       return res.status(400).json({ error: 'Missing conversationId' });
@@ -637,20 +633,21 @@ exports.sendMessage = async (req, res) => {
       conversation_id: conversationId,
       sender_id: userId,
       content,
+      file_url
     });
     await newMsg.save();
 
-    // Use getIO() instead of direct io
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
       _id: newMsg._id,
       conversation_id: newMsg.conversation_id,
       sender_id: userId,
       content: newMsg.content,
+      file_url: newMsg.file_url,
       created_at: newMsg.created_at,
     });
 
-    return res.status(201).json({ message: 'Message sent' });
+    return res.status(201).json({ message: 'Message sent', newMsg });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
