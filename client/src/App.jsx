@@ -14,6 +14,7 @@ import CreateGig from './pages/CreateGig';
 import EditGig from './pages/EditGig';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
+import MyBids from './pages/MyBids';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
@@ -53,6 +54,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/mybids" element={
+                <MyBids />
+              } />
           <Route
             path="/settings"
             element={

@@ -4,7 +4,9 @@ const bidSchema = new mongoose.Schema({
   gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true },
-  message: { type: String }, // we store the initial message for the bid
+  message: { type: String }, // initial message
+  accepted: { type: Boolean, default: false },
+  rejected: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now }
 });
 

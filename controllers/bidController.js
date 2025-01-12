@@ -81,3 +81,93 @@ exports.getBidsForGig = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
+// Accept a bid (gig owner only)
+exports.acceptBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can accept bids' });
+    }
+
+    // Mark bid as accepted
+    bid.accepted = true;
+    await bid.save();
+
+    // Update gig assignment if needed
+    bid.gig_id.assigned_bid = bid._id;
+    await bid.gig_id.save();
+
+    res.json({ message: 'Bid accepted', bidId: bid._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Deny a bid (gig owner only)
+exports.denyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can deny bids' });
+    }
+
+    // Mark bid as rejected instead of deleting
+    bid.rejected = true;
+    await bid.save();
+
+    // Optionally, remove related conversation or mark it inactive
+    // For example:
+    // await Conversation.findOneAndDelete({ gig_id: bid.gig_id._id, bidder_id: bid.user_id });
+
+    res.json({ message: 'Bid denied', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Optional undeny endpoint to revert a rejection
+exports.undenyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can undeny bids' });
+    }
+
+    bid.rejected = false;
+    await bid.save();
+
+    res.json({ message: 'Bid undenied', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getMyBids = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const bids = await Bid.find({ user_id: userId })
+      .populate('gig_id', 'title description price user_id')
+      .populate('user_id', 'name profile_pic_url rating');
+
+    res.json(bids);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};

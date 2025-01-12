@@ -1,0 +1,1304 @@
+
+--- controllers\attachmentController.js ---
+const Attachment = require('../models/Attachment');
+const fs = require('fs');
+
+exports.uploadAttachmentGeneral = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { type, foreign_key_id } = req.body;
+
+    const attachment = new Attachment({
+      type,
+      foreign_key_id,
+      file_url: `/uploads/${req.file.filename}`
+    });
+    await attachment.save();
+    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getAttachment = async (req, res) => {
+  try {
+    const { attachmentId } = req.params;
+    const attachment = await Attachment.findById(attachmentId);
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+    // You can stream the file or return the file path
+    return res.json({ attachment });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const { attachmentId } = req.params;
+    const attachment = await Attachment.findById(attachmentId);
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    // Only allow if user is the owner (would require additional logic to map attachment to user)
+    // For simplicity, let's skip that check or assume admin privileges:
+
+    // Delete file from disk
+    fs.unlink(attachment.file_url, (err) => {
+      if (err) console.error(err);
+    });
+
+    await Attachment.deleteOne({ _id: attachmentId });
+    return res.json({ message: 'Attachment deleted' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\authController.js ---
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+exports.registerUser = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword
+    });
+    await user.save();
+
+    return res.status(201).json({ message: 'User registered successfully' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET || 'supersecretkey',
+      { expiresIn: '1d' }
+    );
+
+    return res.json({ message: 'Login successful', token });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\bidController.js ---
+const Bid = require('../models/Bid');
+const Gig = require('../models/Gig');
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+
+exports.createBid = async (req, res) => {
+  try {
+    const { gig_id, amount, message } = req.body;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gig_id);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    if (gig.user_id.toString() === userId) {
+      return res.status(403).json({ error: 'Cannot bid on your own gig.' });
+    }
+
+    const newBid = new Bid({
+      gig_id,
+      user_id: userId,
+      amount,
+      message
+    });
+    await newBid.save();
+
+    let conversation = await Conversation.findOne({
+      gig_id,
+      gig_owner_id: gig.user_id,
+      bidder_id: userId
+    });
+    if (!conversation) {
+      conversation = new Conversation({
+        gig_id,
+        gig_owner_id: gig.user_id,
+        bidder_id: userId
+      });
+      await conversation.save();
+    }
+
+    const newMessage = new Message({
+      conversation_id: conversation._id,
+      sender_id: userId,
+      content: message || `Hi, I'm placing a bid of $${amount}`
+    });
+    await newMessage.save();
+
+    return res.status(201).json({
+      message: 'Bid placed successfully',
+      bidId: newBid._id,
+      conversationId: conversation._id
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Only the gig owner sees all bids; non-owner sees only their own
+exports.getBidsForGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    if (gig.user_id.toString() === userId) {
+      const bids = await Bid.find({ gig_id: gigId }).populate('user_id', 'name');
+      return res.json(bids);
+    } else {
+      const yourBid = await Bid.findOne({ gig_id: gigId, user_id: userId })
+        .populate('user_id', 'name');
+      if (!yourBid) return res.json([]);
+      return res.json([yourBid]);
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Accept a bid (gig owner only)
+exports.acceptBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    // Ensure current user is the gig owner
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can accept bids' });
+    }
+
+    // Mark bid as accepted - add a field if not exists (e.g., accepted: true)
+    bid.accepted = true;
+    await bid.save();
+
+    // Optionally: update gig to mark it as assigned, close other bids
+    bid.gig_id.assigned_bid = bid._id;
+    await bid.gig_id.save();
+
+    // Optionally: end conversation or mark it inactive
+    // e.g., Conversation.findByIdAndUpdate(bid.conversation_id, { active: false })
+
+    res.json({ message: 'Bid accepted', bidId: bid._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Deny a bid (gig owner only)
+exports.denyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can deny bids' });
+    }
+
+    // Remove or mark bid as denied
+    await bid.remove();
+    res.json({ message: 'Bid denied and removed', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getMyBids = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const bids = await Bid.find({ user_id: userId })
+      .populate('gig_id', 'title description price user_id')
+      .populate('user_id', 'name profile_pic_url rating');
+
+    res.json(bids);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\gigController.js ---
+const Gig = require('../models/Gig');
+const Attachment = require('../models/Attachment');
+const { resizeImage } = require('../middlewares/upload');
+
+exports.getAllGigs = async (req, res) => {
+  try {
+    // Extract query parameters with defaults
+    const {
+      searchTerm = '',
+      category = 'All',
+      sortBy = 'date_desc',
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    // Build MongoDB filter
+    const filter = {};
+    if (searchTerm) {
+      filter.$text = { $search: searchTerm };
+    }
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // Determine sort criteria
+    let sortCriteria;
+    if (searchTerm) {
+      sortCriteria = { score: { $meta: "textScore" } };
+    } else {
+      switch (sortBy) {
+        case 'price_asc':
+          sortCriteria = { price: 1 };
+          break;
+        case 'price_desc':
+          sortCriteria = { price: -1 };
+          break;
+        case 'date_asc':
+          sortCriteria = { created_at: 1 };
+          break;
+        case 'date_desc':
+        default:
+          sortCriteria = { created_at: -1 };
+          break;
+      }
+    }
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    let query = Gig.find(filter)
+      .populate('user_id', 'name')
+      .skip(skip)
+      .limit(limitNum);
+
+    if (searchTerm) {
+      query = query
+        .sort(sortCriteria)
+        .select({ score: { $meta: "textScore" } });
+    } else {
+      query = query.sort(sortCriteria);
+    }
+
+    const gigsPromise = query;
+    const countPromise = Gig.countDocuments(filter);
+    const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
+
+    // Fetch attachments for the retrieved gigs
+    const gigIds = gigs.map(gig => gig._id);
+    const attachments = await Attachment.find({
+      type: 'gig',
+      foreign_key_id: { $in: gigIds }
+    });
+
+    // Group attachments by gig ID
+    const attachmentsByGigId = {};
+    attachments.forEach(att => {
+      // Assuming one attachment per gig for simplicity.
+      // If multiple attachments per gig, you can store an array.
+      attachmentsByGigId[att.foreign_key_id] = att;
+    });
+
+    // Combine attachment data with gigs
+    const gigsWithAttachments = gigs.map(gig => {
+      const gigObj = gig.toObject();
+      gigObj.attachment = attachmentsByGigId[gig._id] || null;
+      return gigObj;
+    });
+
+    return res.json({ gigs: gigsWithAttachments, total });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+exports.createGig = async (req, res) => {
+  try {
+    const { title, description, price, category_id, zipcode } = req.body;
+    const userId = req.user.userId;
+
+    const gig = new Gig({
+      user_id: userId,
+      title,
+      description,
+      price,
+      category_id,
+      zipcode
+    });
+    await gig.save();
+
+    if (req.file) {
+      await resizeImage(req.file.path);
+      await Attachment.create({
+        type: 'gig',
+        foreign_key_id: gig._id,
+        file_url: req.file.path
+      });
+    }
+
+    return res.status(201).json({ message: 'Gig created', gigId: gig._id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+exports.getGigDetails = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const gig = await Gig.findById(gigId).populate('user_id', 'name');
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const attachments = await Attachment.find({ type: 'gig', foreign_key_id: gigId });
+    return res.json({ gig, attachments });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getMyGigs = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const gigs = await Gig.find({ user_id: userId }).sort({ created_at: -1 });
+    return res.json(gigs);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const { title, description, price } = req.body;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    if (gig.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    gig.title = title || gig.title;
+    gig.description = description || gig.description;
+    gig.price = price || gig.price;
+    await gig.save();
+
+    return res.json({ message: 'Gig updated', gig });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    if (gig.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Delete gig and attachments
+    await Gig.findByIdAndDelete(gigId);
+    await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+
+    return res.json({ message: 'Gig deleted' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+
+--- controllers\messageController.js ---
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+const User = require('../models/User');
+const Gig = require('../models/Gig');
+
+exports.getAllConversationsForUser = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const conversations = await Conversation.find({
+      $or: [
+        { gig_owner_id: userId },
+        { bidder_id: userId }
+      ]
+    })
+      .sort({ created_at: -1 })
+      .lean();
+
+    // Populate other user + gig info
+    for (let conv of conversations) {
+      const gig = await Gig.findById(conv.gig_id).lean();
+      conv.gigTitle = gig ? gig.title : 'Unknown Gig';
+
+      let otherUserId = conv.gig_owner_id.toString() === userId
+        ? conv.bidder_id
+        : conv.gig_owner_id;
+      let otherUser = await User.findById(otherUserId).lean();
+      conv.otherUserName = otherUser ? otherUser.name : 'Unknown';
+
+      // Keep conversationId consistent
+      conv.conversationId = conv._id;
+    }
+
+    res.json(conversations);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getConversationMessages = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    if (
+      conversation.gig_owner_id.toString() !== req.user.userId &&
+      conversation.bidder_id.toString() !== req.user.userId
+    ) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const messages = await Message.find({ conversation_id: conversationId })
+      .sort({ created_at: 1 })
+      .lean();
+
+    for (let msg of messages) {
+      const sender = await User.findById(msg.sender_id).lean();
+      msg.senderName = sender ? sender.name : 'Unknown';
+    }
+
+    res.json(messages);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.sendMessage = async (req, res) => {
+  try {
+    const { conversationId, content } = req.body;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    if (
+      conversation.gig_owner_id.toString() !== userId &&
+      conversation.bidder_id.toString() !== userId
+    ) {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    const newMsg = new Message({
+      conversation_id: conversationId,
+      sender_id: userId,
+      content
+    });
+    await newMsg.save();
+
+    return res.status(201).json({ message: 'Message sent' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\reviewController.js ---
+const Review = require('../models/Review');
+const User = require('../models/User');
+
+// Get reviews for a specific user
+exports.getReviewsByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const reviews = await Review.find({ user_id: userId })
+      .populate('reviewer_id', 'name profile_pic_url')  // populate reviewer fields
+      .sort({ date: -1 });
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Create a new review for a user
+exports.createReview = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const reviewerId = req.user.userId; // assumes authentication middleware sets req.user
+
+    // Verify user and reviewer exist
+    const user = await User.findById(userId);
+    const reviewer = await User.findById(reviewerId);
+    if (!user || !reviewer) {
+      return res.status(404).json({ error: 'User or reviewer not found' });
+    }
+
+    const { rating, comment } = req.body;
+    if (!rating || !comment) {
+      return res.status(400).json({ error: 'Rating and comment are required' });
+    }
+
+    const newReview = new Review({
+      user_id: userId,
+      reviewer_id: reviewerId,
+      rating,
+      comment
+    });
+
+    await newReview.save();
+    res.status(201).json(newReview);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Update a review by its ID (optional - if reviews are editable)
+exports.updateReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const reviewerId = req.user.userId;
+
+    // Only allow the original reviewer to update
+    const review = await Review.findById(reviewId);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.reviewer_id.toString() !== reviewerId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { rating, comment } = req.body;
+    if (rating !== undefined) review.rating = rating;
+    if (comment !== undefined) review.comment = comment;
+    review.date = new Date();
+    
+    await review.save();
+    res.json(review);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Delete a review (optional)
+exports.deleteReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const reviewerId = req.user.userId;
+
+    const review = await Review.findById(reviewId);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.reviewer_id.toString() !== reviewerId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await review.remove();
+    res.json({ message: 'Review deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\userController.js ---
+const User = require('../models/User');
+
+// Get public profile by userId
+exports.getPublicProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Update user profile (only owner can update)
+exports.updateProfile = async (req, res) => {
+  try {
+    if (req.user.userId !== req.params.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { profile_pic_url, name, bio, location, portfolio } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      { profile_pic_url, name, bio, location, portfolio },
+      { new: true }
+    );
+    if (!updatedUser) return res.status(404).json({ error: 'User not found' });
+    res.json(updatedUser);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- middlewares\auth.js ---
+const jwt = require('jsonwebtoken');
+
+exports.authenticate = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'No authorization header' });
+  }
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { userId: ..., email: ... }
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+};
+
+
+--- middlewares\upload.js ---
+const multer = require('multer');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
+
+// Create a disk storage to store original files temporarily
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/'); // Make sure this folder exists
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// Filter to only allow images for gig attachments
+function gigFileFilter(req, file, cb) {
+  if (!file.mimetype.startsWith('image/')) {
+    return cb(new Error('Only images are allowed for gig attachments'), false);
+  }
+  cb(null, true);
+}
+
+function generalFileFilter(req, file, cb) {
+  // For message attachments we can allow any file type, or implement more checks
+  cb(null, true);
+}
+
+const gigUpload = multer({
+  storage: storage,
+  fileFilter: gigFileFilter
+});
+
+const messageUpload = multer({
+  storage: storage,
+  fileFilter: generalFileFilter
+});
+
+// A helper function to resize images if needed
+async function resizeImage(filePath, width = 800, height = 800) {
+  const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
+  await sharp(filePath)
+    .resize({ width, height, fit: 'inside' })
+    .toFile(newFilePath);
+
+  // Delete original file, rename new file
+  fs.unlinkSync(filePath);
+  fs.renameSync(newFilePath, filePath);
+}
+
+module.exports = {
+  gigUpload,
+  messageUpload,
+  resizeImage
+};
+
+
+--- models\Attachment.js ---
+const mongoose = require('mongoose');
+
+const attachmentSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['gig', 'message', 'bid', 'profile', 'portfolio'],
+    required: true
+  },
+  foreign_key_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
+  file_url: { type: String, required: true },
+  uploaded_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Attachment', attachmentSchema);
+
+
+--- models\Bid.js ---
+const mongoose = require('mongoose');
+
+const bidSchema = new mongoose.Schema({
+  gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  amount: { type: Number, required: true },
+  message: { type: String }, // we store the initial message for the bid
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Bid', bidSchema);
+
+
+--- models\Conversation.js ---
+const mongoose = require('mongoose');
+
+const conversationSchema = new mongoose.Schema({
+  gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
+  gig_owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  bidder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Conversation', conversationSchema);
+
+
+--- models\Gig.js ---
+const mongoose = require('mongoose');
+
+const gigSchema = new mongoose.Schema({
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  price: { type: Number, required: true },
+  category_id: { type: Number }, // optional
+  zipcode: { type: String },     // optional zipcode field
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Gig', gigSchema);
+
+
+--- models\Message.js ---
+const mongoose = require('mongoose');
+
+const messageSchema = new mongoose.Schema({
+  conversation_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Conversation',
+    required: true
+  },
+  sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, default: '' }, 
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Message', messageSchema);
+
+
+--- models\Review.js ---
+const mongoose = require('mongoose');
+
+const reviewSchema = new mongoose.Schema({
+  user_id: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  reviewer_id: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  rating: { 
+    type: Number, 
+    required: true 
+  },
+  comment: { 
+    type: String, 
+    required: true 
+  },
+  date: { 
+    type: Date, 
+    default: Date.now 
+  }
+});
+
+
+module.exports = mongoose.model('Review', reviewSchema);
+
+
+--- models\User.js ---
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+  profile_pic_url: { type: String },
+  bio: { type: String },
+  location: { type: String },
+  portfolio: { type: String },
+  rating: { type: Number, default: 0 },
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+--- routes\attachmentRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const {
+  uploadAttachmentGeneral,
+  getAttachment,
+  deleteAttachment
+} = require('../controllers/attachmentController');
+
+const { authenticate } = require('../middlewares/auth');
+const { messageUpload } = require('../middlewares/upload');
+
+// General file upload endpoint
+router.post('/', authenticate, messageUpload.single('file'), uploadAttachmentGeneral);
+router.get('/:attachmentId', getAttachment);
+router.delete('/:attachmentId', authenticate, deleteAttachment);
+
+module.exports = router;
+
+
+--- routes\authRoutes.js ---
+const express = require('express');
+const passport = require('passport');
+const { registerUser, loginUser } = require('../controllers/authController');
+const jwt = require('jsonwebtoken');
+const router = express.Router();
+
+// Existing email/password routes
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+
+// Helper to generate JWT after OAuth success
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user._id, email: user.email },
+    process.env.JWT_SECRET || 'supersecretkey',
+    { expiresIn: '1d' }
+  );
+};
+
+// Google OAuth routes
+router.get(
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false }),
+  (req, res) => {
+    // Successful authentication, generate token and respond
+    const token = generateToken(req.user);
+    res.json({ message: 'Google login successful', token });
+  }
+);
+
+// Apple OAuth routes
+// For Apple, you typically use a POST request because Apple sends a JWT to your callback URL.
+// Adjust these routes based on how your front-end interacts with Apple Sign In.
+router.post(
+  '/apple',
+  passport.authenticate('apple', { session: false }),
+  (req, res) => {
+    // Successful authentication, generate token and respond
+    const token = generateToken(req.user);
+    res.json({ message: 'Apple login successful', token });
+  }
+);
+
+module.exports = router;
+
+
+--- routes\bidRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const { createBid, getBidsForGig, acceptBid, // Ensure this is imported
+    denyBid,   // Ensure this is imported
+    getMyBids } = require('../controllers/bidController');
+
+// Place a bid (must be logged in)
+router.post('/', authenticate, createBid);
+
+// Get bids for a gig (the gig owner sees all, non-owner sees only their own)
+router.get('/:gigId', authenticate, getBidsForGig);
+
+router.post('/:bidId/accept', authenticate, acceptBid);
+router.post('/:bidId/deny', authenticate, denyBid);
+router.get('/my', authenticate, getMyBids);
+
+
+module.exports = router;
+
+
+--- routes\gigRoutes.js ---
+// gigRoutes.js (updated)
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const { gigUpload } = require('../middlewares/upload');
+const {
+  getAllGigs,
+  createGig,
+  getGigDetails,
+  getMyGigs,
+  updateGig,
+  deleteGig
+} = require('../controllers/gigController');
+
+// Public can see all gigs
+router.get('/', getAllGigs);
+
+// Auth user can create a gig
+router.post('/', authenticate, gigUpload.single('gigImage'), createGig);
+
+// Public can see gig details
+router.get('/:gigId', getGigDetails);
+
+// Auth user can see their own gigs
+router.get('/mygigs/owner', authenticate, getMyGigs);
+
+// Auth user can edit gig
+router.put('/:gigId', authenticate, updateGig);
+
+// Auth user can delete gig
+router.delete('/:gigId', authenticate, deleteGig);
+
+module.exports = router;
+
+
+--- routes\messageRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  getAllConversationsForUser,
+  getConversationMessages,
+  sendMessage
+} = require('../controllers/messageController');
+
+// All user conversations
+router.get('/', authenticate, getAllConversationsForUser);
+
+// Messages in a specific conversation
+router.get('/:conversationId', authenticate, getConversationMessages);
+
+// Send a message in a conversation
+router.post('/', authenticate, sendMessage);
+
+module.exports = router;
+
+
+--- routes\reviewRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const reviewController = require('../controllers/reviewController');
+
+// Get all reviews for a user
+router.get('/user/:userId', reviewController.getReviewsByUser);
+
+// Create a new review for a user (requires authentication)
+router.post('/user/:userId', authenticate, reviewController.createReview);
+
+// Update a review by id (optional, if needed)
+router.put('/:reviewId', authenticate, reviewController.updateReview);
+
+// Delete a review by id (optional, if needed)
+router.delete('/:reviewId', authenticate, reviewController.deleteReview);
+
+module.exports = router;
+
+
+--- routes\userRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const userController = require('../controllers/userController');
+
+// Public profile
+router.get('/:userId', userController.getPublicProfile);
+
+// Update user profile
+router.put('/:userId', authenticate, userController.updateProfile);
+
+module.exports = router;
+
+
+--- strategies\passportStrategies.js ---
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const AppleStrategy = require('passport-apple').Strategy;
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+
+// Serialize and deserialize user if needed (here using JWT, so can be minimal)
+passport.serializeUser((user, done) => done(null, user.id));
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await User.findById(id);
+    done(null, user);
+  } catch (err) {
+    done(err, null);
+  }
+});
+
+// Google Strategy
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        // Find or create user
+        let user = await User.findOne({ googleId: profile.id });
+        if (!user) {
+          // If email exists with another method, update record; otherwise create new.
+          user = await User.findOne({ email: profile.emails[0].value });
+          if (user) {
+            user.googleId = profile.id;
+          } else {
+            user = new User({
+              name: profile.displayName,
+              email: profile.emails[0].value,
+              googleId: profile.id,
+              password: '', // no password since it's OAuth
+            });
+          }
+          await user.save();
+        }
+        done(null, user);
+      } catch (err) {
+        done(err, null);
+      }
+    }
+  )
+);
+
+// Apple Strategy
+passport.use(
+  new AppleStrategy(
+    {
+      clientID: process.env.APPLE_CLIENT_ID,
+      teamID: process.env.APPLE_TEAM_ID,
+      keyID: process.env.APPLE_KEY_ID,
+      privateKeyString: process.env.APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      callbackURL: process.env.APPLE_CALLBACK_URL,
+      scope: ['name', 'email']
+    },
+    async (accessToken, refreshToken, idToken, profile, done) => {
+      try {
+        // Find or create user
+        let user = await User.findOne({ appleId: profile.id });
+        if (!user) {
+          // If email exists with another method, update record; otherwise create new.
+          user = await User.findOne({ email: profile.email });
+          if (user) {
+            user.appleId = profile.id;
+          } else {
+            user = new User({
+              name: profile.name ? `${profile.name.firstName} ${profile.name.lastName}` : 'Apple User',
+              email: profile.email,
+              appleId: profile.id,
+              password: '', // no password since it's OAuth
+            });
+          }
+          await user.save();
+        }
+        done(null, user);
+      } catch (err) {
+        done(err, null);
+      }
+    }
+  )
+);
+
+
+--- server.js ---
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const xss = require('xss-clean');
+const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
+const path = require('path');
+const passport = require('passport');
+
+// Import Routes
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const gigRoutes = require('./routes/gigRoutes');
+const bidRoutes = require('./routes/bidRoutes');
+const messageRoutes = require('./routes/messageRoutes');
+const attachmentRoutes = require('./routes/attachmentRoutes');
+const reviewRoutes = require('./routes/reviewRoutes')
+
+// Init
+const app = express();
+
+const allowedOrigins = ['http://localhost:4000', 'http://localhost:5173'];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.use(helmet());
+app.use(xss());
+app.use(express.json());
+
+// Rate Limiter
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+app.use(limiter);
+
+app.use(passport.initialize());
+
+// Static folder for uploaded images
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Origin', '*');
+
+  next();
+});
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Connect Mongo
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gig-platform', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => {
+  console.log('MongoDB connected');
+}).catch(err => {
+  console.error(err);
+  process.exit(1);
+});
+
+require('./strategies/passportStrategies');
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/gigs', gigRoutes);
+app.use('/api/bids', bidRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/attachments', attachmentRoutes);
+app.use('/api/reviews', reviewRoutes);
+
+// Serve React build if you want to deploy front+back together
+// app.use(express.static(path.join(__dirname, 'client', 'dist')));
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
+// });
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+

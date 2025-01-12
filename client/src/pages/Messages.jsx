@@ -1,352 +1,328 @@
-import React, { useEffect, useState, useContext, useRef } from 'react';
-import { AuthContext } from '../context/AuthContext';
+import React, { useEffect, useState, useContext } from 'react';
 import axios from '../api/axiosInstance';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Search, Send, MessageSquare, Star, X, Menu } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Link } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import moment from 'moment';
 
-const Messages = () => {
-  const { userData } = useContext(AuthContext);
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [replyContent, setReplyContent] = useState('');
+export default function Messages() {
+  const { token, userData } = useContext(AuthContext);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const messagesEndRef = useRef(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    fetchConversations();
-    // Set up polling for new messages
-    const pollInterval = setInterval(() => {
-      if (selectedConversation) {
-        fetchMessages(selectedConversation.conversationId);
-      }
-    }, 10000); // Poll every 10 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [selectedConversation]);
+  const [selectedGigFilter, setSelectedGigFilter] = useState('All Gigs');
+  const [selectedMsgFilter, setSelectedMsgFilter] = useState('All Messages');
+  const [conversations, setConversations] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [attachment, setAttachment] = useState(null);
+  const [activeGig, setActiveGig] = useState({
+    title: 'House Painting Project',
+    budget: 2500,
+    bid: 2200,
+    status: 'In Discussion'
+  });
+  const [otherUserRating, setOtherUserRating] = useState(4.2);
+  const [otherUserReviewsCount, setOtherUserReviewsCount] = useState(48);
+  const [otherUserMemberSince, setOtherUserMemberSince] = useState('2023');
+  const [otherUserGigsCompleted, setOtherUserGigsCompleted] = useState(89);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!token) return;
+    axios.get('/messages')
+      .then((res) => {
+        const data = res.data.map((c) => ({ ...c }));
+        setConversations(data);
+      })
+      .catch((err) => console.error(err));
+  }, [token]);
 
-  const fetchConversations = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axios.get('/messages');
-      // Filter out conversations without gigs
-      const validConversations = res.data.filter(conv => conv.gigTitle);
-      setConversations(validConversations);
-    } catch (err) {
-      setError('Failed to load conversations');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    if (!activeConversation) {
+      setMessages([]);
+      return;
     }
-  };
+    axios.get(`/messages/${activeConversation.conversationId}`)
+      .then((res) => setMessages(res.data))
+      .catch((err) => console.error(err));
+  }, [activeConversation]);
 
-  const fetchMessages = async (conversationId) => {
-    try {
-      const res = await axios.get(`/messages/${conversationId}`);
-      setMessages(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const selectConversation = async (conv) => {
-    setSelectedConversation(conv);
-    setIsMobileMenuOpen(false);
-    try {
-      await fetchMessages(conv.conversationId);
-    } catch (err) {
-      console.error(err);
-    }
+  const handleSelectConversation = (conv) => {
+    setActiveConversation(conv);
+    setNewMessage('');
+    setAttachment(null);
   };
 
   const handleSendMessage = async () => {
-    if (!selectedConversation || !replyContent.trim()) return;
-    
-    const tempId = Date.now(); // Temporary ID for optimistic update
-    const newMessage = {
-      _id: tempId,
-      sender_id: userData?.userId,
-      senderName: userData?.name,
-      content: replyContent,
-      created_at: new Date().toISOString()
-    };
-
-    // Optimistic update
-    setMessages(prev => [...prev, newMessage]);
-    setReplyContent('');
-    scrollToBottom();
-
+    if (!newMessage.trim() && !attachment) return;
     try {
+      let attachmentId = null;
+      if (attachment) {
+        const formData = new FormData();
+        formData.append('file', attachment);
+        formData.append('type', 'message');
+        formData.append('foreign_key_id', activeConversation.conversationId);
+        const uploadRes = await axios.post('/attachments', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        attachmentId = uploadRes.data.attachmentId;
+      }
       await axios.post('/messages', {
-        conversationId: selectedConversation.conversationId,
-        content: replyContent
+        conversationId: activeConversation.conversationId,
+        content: newMessage
       });
-      await fetchMessages(selectedConversation.conversationId);
+      setNewMessage('');
+      setAttachment(null);
+      const updated = await axios.get(`/messages/${activeConversation.conversationId}`);
+      setMessages(updated.data);
     } catch (err) {
-      // Remove the optimistic update on error
-      setMessages(prev => prev.filter(msg => msg._id !== tempId));
-      setError('Failed to send message');
       console.error(err);
     }
   };
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.gigTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.otherUserName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const getInitials = (name) => {
-    return name
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now - date;
-    
-    if (diff < 24 * 60 * 60 * 1000) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const handleAttachmentChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setAttachment(e.target.files[0]);
     }
-    return date.toLocaleDateString();
   };
 
-  const ConversationsList = () => (
-    <div className="space-y-2">
-      {isLoading && <div className="p-4 text-center">Loading conversations...</div>}
-      {error && <div className="p-4 text-center text-red-500">{error}</div>}
-      {!isLoading && filteredConversations.length === 0 && (
-        <div className="p-4 text-center text-muted-foreground">No conversations found</div>
-      )}
-      {filteredConversations.map((conv) => (
-        <div key={conv.conversationId} className="px-4">
-          <button
-            className={`w-full p-4 rounded-lg text-left transition-colors ${
-              selectedConversation?.conversationId === conv.conversationId
-                ? 'bg-blue-100 dark:bg-blue-900'
-                : 'hover:bg-blue-50 dark:hover:bg-blue-800'
-            }`}
-            onClick={() => selectConversation(conv)}
-          >
-            <div className="flex items-start space-x-3">
-              <Avatar>
-                <AvatarImage src={conv.otherUserAvatar} alt={conv.otherUserName} />
-                <AvatarFallback>{getInitials(conv.otherUserName)}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 space-y-1">
-                <div className="flex justify-between">
-                  <p className="font-medium">{conv.otherUserName}</p>
-                  <div className="flex items-center">
-                    {conv.unreadCount > 0 && (
-                      <Badge variant="destructive" className="mr-2">
-                        {conv.unreadCount}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground line-clamp-1">
-                  {conv.gigTitle}
-                </p>
-                <div className="flex justify-between items-center text-xs text-muted-foreground">
-                  <span>{conv.lastMessage?.content?.slice(0, 30)}...</span>
-                  <span>{formatDate(conv.lastMessage?.created_at)}</span>
-                </div>
-              </div>
-            </div>
-          </button>
-          <Separator className="my-2" />
-        </div>
-      ))}
-    </div>
-  );
+  const handleReportUser = () => {
+    alert('User reported.');
+  };
+
+  const handleBlockUser = () => {
+    alert('User blocked.');
+  };
+
+  const handleViewProfile = () => {
+    alert('Navigate to user profile.');
+  };
+
+  const handleAcceptBid = () => {
+    alert('Bid accepted.');
+  };
+
+  const handleViewGig = () => {
+    alert('Navigate to gig details.');
+  };
+
+  const filteredConversations = conversations.filter((conv) => {
+    return conv.otherUserName.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  const renderStarRating = (rating) => {
+    const full = Math.floor(rating);
+    const half = rating - full >= 0.5;
+    const stars = [];
+    for (let i = 0; i < 5; i++) {
+      if (i < full) stars.push(<span key={i}>★</span>);
+      else if (i === full && half) stars.push(<span key={i}>★</span>);
+      else stars.push(<span key={i} className="text-gray-300">★</span>);
+    }
+    return <div className="flex text-yellow-400">{stars}</div>;
+  };
 
   return (
-    <div className="h-[calc(100vh-4rem)] p-4 lg:p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 h-full">
-        {/* Mobile Menu Button */}
-        <div className="lg:hidden">
-          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0">
-              <div className="h-full flex flex-col">
-                <CardHeader className="space-y-4 pb-4">
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Messages</CardTitle>
-                    <Button variant="outline" size="sm">
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      New
-                    </Button>
+    <div className="flex flex-col min-h-screen bg-gray-100">
+      <div className="container mx-auto p-4 flex-grow flex flex-col sm:flex-row h-[calc(100vh-2rem)] bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="sm:w-1/3 flex flex-col border-r border-gray-200">
+          <div className="p-4 border-b border-gray-200 space-y-2">
+            <input
+              type="text"
+              placeholder="Search messages..."
+              className="w-full p-2 border rounded-lg"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <div className="flex space-x-2">
+              <select
+                className="p-2 border rounded-lg flex-1"
+                value={selectedGigFilter}
+                onChange={(e) => setSelectedGigFilter(e.target.value)}
+              >
+                <option>All Gigs</option>
+                <option>House Painting</option>
+                <option>Lawn Care</option>
+                <option>Web Development</option>
+              </select>
+              <select
+                className="p-2 border rounded-lg flex-1"
+                value={selectedMsgFilter}
+                onChange={(e) => setSelectedMsgFilter(e.target.value)}
+              >
+                <option>All Messages</option>
+                <option>Unread</option>
+                <option>Archived</option>
+              </select>
+            </div>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {filteredConversations.length === 0 && (
+              <div className="p-4 text-gray-500">No conversations found.</div>
+            )}
+            {filteredConversations.map((conv) => (
+              <div
+                key={conv.conversationId}
+                onClick={() => handleSelectConversation(conv)}
+                className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${
+                  activeConversation?.conversationId === conv.conversationId ? 'bg-blue-50' : ''
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center space-x-2">
+                    <h3 className="font-semibold">{conv.otherUserName}</h3>
                   </div>
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search conversations..."
-                      className="pl-8"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </CardHeader>
-                <ScrollArea className="flex-1">
-                  <ConversationsList />
-                </ScrollArea>
+                </div>
+                <p className="text-xs text-gray-500">Gig: {conv.gigTitle || 'Unknown Gig'}</p>
               </div>
-            </SheetContent>
-          </Sheet>
+            ))}
+          </div>
         </div>
 
-        {/* Sidebar - Desktop */}
-        <Card className="hidden lg:flex lg:col-span-3 flex-col">
-          <CardHeader className="space-y-4 pb-4">
-            <div className="flex justify-between items-center">
-              <CardTitle>Messages</CardTitle>
-              <Button variant="outline" size="sm">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                New
-              </Button>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search conversations..."
-                className="pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </CardHeader>
-          <ScrollArea className="flex-1">
-            <ConversationsList />
-          </ScrollArea>
-        </Card>
-
-        {/* Chat Area */}
-        <Card className="col-span-1 lg:col-span-9 flex flex-col">
-          {selectedConversation ? (
-            <>
-              <CardHeader className="border-b">
-                <div className="flex justify-between items-center">
-                  <Link 
-                    to={`/profile/${selectedConversation.otherUserId}`}
-                    className="flex items-center space-x-4 hover:opacity-80 transition-opacity"
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={selectedConversation.otherUserAvatar} alt={selectedConversation.otherUserName} />
-                      <AvatarFallback>{getInitials(selectedConversation.otherUserName)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <CardTitle>{selectedConversation.otherUserName}</CardTitle>
-                        <div className="flex items-center text-yellow-500">
-                          <Star className="h-4 w-4 fill-current" />
-                          <span className="ml-1 text-sm">
-                            {selectedConversation.otherUserRating || 0}
-                          </span>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="mt-1">
-                        {selectedConversation.gigTitle}
-                      </Badge>
+        {!activeConversation ? (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Select a conversation
+          </div>
+        ) : (
+          <div className="sm:w-2/3 flex flex-col">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <div className="flex items-start space-x-4">
+                  {activeConversation.otherUserPic ? (
+                    <img
+                      crossOrigin="anonymous"
+                      src={`http://localhost:4000${activeConversation.otherUserPic}`}
+                      alt="Profile"
+                      className="rounded-full w-12 h-12 object-cover"
+                    />
+                  ) : (
+                    <div className="rounded-full w-12 h-12 bg-gray-200 flex items-center justify-center text-gray-700 font-bold text-xl">
+                      {activeConversation.otherUserName.charAt(0).toUpperCase()}
                     </div>
-                  </Link>
-                </div>
-              </CardHeader>
-
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg._id}
-                      className={`flex ${
-                        msg.sender_id === userData?.userId ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[70%] ${
-                          msg.sender_id === userData?.userId
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-800'
-                        } rounded-lg p-4`}
-                      >
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className="text-sm font-medium">{msg.senderName}</span>
-                          <span className="text-xs opacity-70">
-                            {formatDate(msg.created_at)}
-                          </span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      </div>
+                  )}
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-xl font-bold">{activeConversation.otherUserName}</h2>
+                      <span className="bg-green-500 rounded-full w-2 h-2" />
                     </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
-
-              <CardContent className="border-t p-4">
-                <div className="space-y-4">
-                  <Textarea
-                    placeholder="Type your message..."
-                    className="min-h-[100px] resize-none"
-                    value={replyContent}
-                    onChange={(e) => setReplyContent(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                  />
-                  <div className="flex justify-end">
-                    <Button
-                      onClick={handleSendMessage}
-                      disabled={!replyContent.trim()}
-                      className="space-x-2 bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Send className="h-4 w-4" />
-                      <span>Send Message</span>
-                    </Button>
+                    <div className="flex items-center space-x-1">
+                      {renderStarRating(otherUserRating)}
+                      <span className="text-sm text-gray-600">
+                        ({otherUserRating.toFixed(1)} • {otherUserReviewsCount} reviews)
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Member since {otherUserMemberSince} • {otherUserGigsCompleted} gigs completed
+                    </p>
                   </div>
                 </div>
-              </CardContent>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a conversation to start messaging
+                <div className="mt-2 sm:mt-0 flex space-x-2">
+                  <button onClick={handleReportUser} className="text-gray-600 hover:text-gray-800 px-3 py-1">
+                    Report
+                  </button>
+                  <button onClick={handleBlockUser} className="text-red-600 hover:text-red-800 px-3 py-1">
+                    Block
+                  </button>
+                  <button
+                    onClick={handleViewProfile}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  >
+                    View Profile
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </Card>
+
+            <div className="bg-gray-50 p-4 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+              <div className="mb-2 sm:mb-0">
+                {/* Display gig title and details statically using activeConversation or related state */}
+                <h3 className="text-lg font-bold">{activeConversation.gigTitle}</h3>
+                {/* Additional gig details like bid amount can be displayed here if available */}
+              </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleAcceptBid}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm"
+                  >
+                    Accept Bid
+                  </button>
+                  <button
+                    onClick={handleViewGig}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    View Gig
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {messages.length === 0 && (
+                <div className="text-gray-500">No messages yet. Say hello!</div>
+              )}
+              {messages.map((msg) => {
+                const isSelf = msg.sender_id === userData?.userId;
+                return (
+                  <div key={msg._id} className={`mb-4 flex ${isSelf ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-lg">
+                      {!isSelf && (
+                        <div className="text-xs text-gray-500 mb-1">{activeGig.title}</div>
+                      )}
+                      <div
+                        className={`rounded-lg px-4 py-2 ${
+                          isSelf ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                        <p className={`text-xs mt-1 ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
+                          {moment(msg.created_at).format('h:mm A')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex flex-col space-y-2">
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    placeholder="Type your message..."
+                    className="flex-1 p-2 border rounded-lg"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSendMessage();
+                    }}
+                  />
+                  <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer">
+                    📎
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleAttachmentChange}
+                    />
+                  </label>
+                  <button
+                    onClick={handleSendMessage}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                  >
+                    Send
+                  </button>
+                </div>
+                {attachment && (
+                  <div className="text-sm text-gray-500">
+                    Selected file: {attachment.name}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">
+                  Drag & drop or click the attachment button. Max size: 25MB.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-};
-
-export default Messages;
+}
