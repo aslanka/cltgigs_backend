@@ -7,6 +7,7 @@ const bidSchema = new mongoose.Schema({
   message: { type: String }, // initial message
   accepted: { type: Boolean, default: false },
   rejected: { type: Boolean, default: false },
+  conversation_id: { type: mongoose.Schema.Types.ObjectId }, // Added field
   created_at: { type: Date, default: Date.now }
 });
 

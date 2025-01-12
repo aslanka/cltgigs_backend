@@ -35,7 +35,7 @@ function MyGigs() {
 
   const handleMessage = (bid) => {
     const conversationId = bid.conversationId;
-    navigate(`/messages/${conversationId}`);
+    navigate(`/messages/conversation/${conversationId}`);
   };
 
   const handleAcceptBid = async (bidId) => {

@@ -1,9 +1,15 @@
+// controllers/messageController.js
+const { getIO } = require('../utils/socketIOInstance');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Gig = require('../models/Gig');
-const Bid = require('../models/Bid'); // Import Bid model
+const Bid = require('../models/Bid');
+const mongoose = require('mongoose');
+// We'll emit to socket.io from within these methods:
+// We'll create a shared instance
 
+// GET /api/messages (all conversations for user)
 exports.getAllConversationsForUser = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -16,84 +22,89 @@ exports.getAllConversationsForUser = async (req, res) => {
       .sort({ created_at: -1 })
       .lean();
 
+    // Populate conversation data
     for (let conv of conversations) {
       const gig = await Gig.findById(conv.gig_id).lean();
-      conv.gigTitle = gig ? gig.title : undefined;
-      conv.gig_id = conv.gig_id; // preserve gig id for navigation
+      conv.gigTitle = gig ? gig.title : 'No Title';
 
-      let otherUserId = conv.gig_owner_id.toString() === userId
+      const otherUserId = (conv.gig_owner_id.toString() === userId)
         ? conv.bidder_id
         : conv.gig_owner_id;
-      let otherUser = await User.findById(otherUserId).lean();
-      conv.otherUserName = otherUser ? otherUser.name : 'Unknown';
-      conv.otherUserPic = otherUser ? otherUser.profile_pic_url : null;
-      conv.otherUserId = otherUserId;
+      const otherUser = await User.findById(otherUserId).lean();
+      conv.otherUserName = otherUser?.name || 'Unknown User';
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
 
-      conv.conversationId = conv._id;
-
-      // Check if associated bid was rejected
-      const bid = await Bid.findOne({ gig_id: conv.gig_id, bidder_id: conv.bidder_id });
-      if (bid && bid.rejected) {
-        conv.bidRejected = true;
+      // Mark if conversation is blocked for the current user
+      if (conv.gig_owner_id.toString() === userId && conv.blocked_by_owner) {
+        conv.isBlocked = true;
+      } else if (conv.bidder_id.toString() === userId && conv.blocked_by_bidder) {
+        conv.isBlocked = true;
+      } else {
+        conv.isBlocked = false;
       }
     }
 
     res.json(conversations);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 };
 
+// GET /api/messages/:conversationId
 exports.getConversationMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-    if (
-      conversation.gig_owner_id.toString() !== req.user.userId &&
-      conversation.bidder_id.toString() !== req.user.userId
-    ) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    // Check if associated bid was rejected
-    const bid = await Bid.findOne({
-      gig_id: conversation.gig_id,
-      bidder_id: conversation.bidder_id,
-      rejected: true
-    });
-    if (bid) {
-      return res.json([]); // No messages for rejected bids
-    }
-
-    const messages = await Message.find({ conversation_id: conversationId })
-      .sort({ created_at: 1 })
-      .lean();
-
-    for (let msg of messages) {
-      const sender = await User.findById(msg.sender_id).lean();
-      msg.senderName = sender ? sender.name : 'Unknown';
-    }
-
-    res.json(messages);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
-  }
-};
-
-exports.sendMessage = async (req, res) => {
-  try {
-    const { conversationId, content } = req.body;
     const userId = req.user.userId;
 
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+
+    // Check if user is part of this conversation
+    if (
+      conversation.gig_owner_id.toString() !== userId &&
+      conversation.bidder_id.toString() !== userId
+    ) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    // Check if user has blocked conversation
+    if (
+      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.json([]); // Return empty if blocked from own side
+    }
+
+    const msgs = await Message.find({ conversation_id: conversationId })
+      .sort({ created_at: 1 })
+      .lean();
+
+    res.json(msgs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages (send a new message)
+exports.sendMessage = async (req, res) => {
+  try {
+    const { conversationId, content } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Missing conversationId' });
+    }
+
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
     if (
       conversation.gig_owner_id.toString() !== userId &&
       conversation.bidder_id.toString() !== userId
@@ -101,26 +112,132 @@ exports.sendMessage = async (req, res) => {
       return res.status(403).json({ error: 'Not part of this conversation' });
     }
 
-    // Prevent sending messages if bid was rejected
-    const bid = await Bid.findOne({
-      gig_id: conversation.gig_id,
-      bidder_id: conversation.bidder_id,
-      rejected: true
-    });
-    if (bid) {
-      return res.status(403).json({ error: 'Cannot send message; bid was rejected' });
+    if (
+      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.status(403).json({ error: 'Conversation blocked' });
     }
 
     const newMsg = new Message({
       conversation_id: conversationId,
       sender_id: userId,
-      content
+      content,
     });
     await newMsg.save();
 
-    res.status(201).json({ message: 'Message sent' });
+    // Use getIO() instead of direct io
+    const io = getIO();
+    io.to(conversationId).emit('newMessage', {
+      _id: newMsg._id,
+      conversation_id: newMsg.conversation_id,
+      sender_id: userId,
+      content: newMsg.content,
+      created_at: newMsg.created_at,
+    });
+
+    return res.status(201).json({ message: 'Message sent' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// In the deleteMessage function
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.userId;
+
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    // Only sender can delete
+    if (msg.sender_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Cannot delete others messages' });
+    }
+
+    await Message.deleteOne({ _id: messageId });
+
+    // Use getIO() instead of direct io
+    const io = getIO();
+    io.to(msg.conversation_id.toString()).emit('messageDeleted', { messageId });
+
+    res.json({ message: 'Message deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:messageId/report
+exports.reportMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    msg.reported = true;
+    await msg.save();
+    res.json({ message: 'Message reported' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/block
+exports.blockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = true;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = true;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation blocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/unblock
+exports.unblockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = false;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = false;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation unblocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
 };

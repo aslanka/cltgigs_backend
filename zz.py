@@ -1,7 +1,7 @@
 import os
 
 # Directories to include
-directories = ["controllers", "middlewares", "models", "routes", "strategies"]
+directories = ["controllers", "middlewares", "models", "routes", "strategies", "utils"]
 # File to include
 server_file = "server.js"
 # Output file

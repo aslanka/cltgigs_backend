@@ -7,6 +7,9 @@ const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const path = require('path');
 const passport = require('passport');
+const http = require('http'); // For Socket.io
+const { init } = require('./utils/socketIOInstance'); // Import Socket.IO initialization
+const { setupSocketIO } = require('./utils/socketHandlers'); // Import Socket.IO event handlers
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -15,13 +18,25 @@ const gigRoutes = require('./routes/gigRoutes');
 const bidRoutes = require('./routes/bidRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const attachmentRoutes = require('./routes/attachmentRoutes');
-const reviewRoutes = require('./routes/reviewRoutes')
+const reviewRoutes = require('./routes/reviewRoutes');
 
-// Init
+// Initialize Express app
 const app = express();
 
-const allowedOrigins = ['http://localhost:4000', 'http://localhost:5173'];
+// Create HTTP server
+const server = http.createServer(app);
 
+// Initialize Socket.IO
+const io = init(server); // Initialize Socket.IO and get the io instance
+console.log('Socket.IO initialized:', io !== undefined); // Debugging: Confirm initialization
+
+// Set up Socket.IO event handlers
+setupSocketIO(io);
+
+app.set('io', io);
+
+// CORS configuration
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -34,6 +49,7 @@ const corsOptions = {
   credentials: true,
 };
 
+// Middleware
 app.use(cors(corsOptions));
 app.use(helmet());
 app.use(xss());
@@ -41,34 +57,37 @@ app.use(express.json());
 
 // Rate Limiter
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
+// Passport initialization
 app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
   res.header('Access-Control-Allow-Methods', 'GET');
-  res.header('Access-Control-Allow-Origin', '*');
-
   next();
 });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Connect Mongo
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gig-platform', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
-  console.log('MongoDB connected');
-}).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gig-platform', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log('MongoDB connected');
+  })
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 
+// Passport strategies
 require('./strategies/passportStrategies');
 
 // Routes
@@ -80,13 +99,10 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 
-// Serve React build if you want to deploy front+back together
-// app.use(express.static(path.join(__dirname, 'client', 'dist')));
-// app.get('*', (req, res) => {
-//   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
-// });
+// In production, serve React build or other front-end (omitted for brevity)
 
+// Start the server
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

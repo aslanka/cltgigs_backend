@@ -1,19 +1,31 @@
+// routes/messageRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
 const {
   getAllConversationsForUser,
   getConversationMessages,
-  sendMessage
+  sendMessage,
+  deleteMessage,
+  reportMessage,
+  blockConversation,
+  unblockConversation
 } = require('../controllers/messageController');
 
-// All user conversations
+// GET all user conversations
 router.get('/', authenticate, getAllConversationsForUser);
 
-// Messages in a specific conversation
+// GET messages for a specific conversation
 router.get('/:conversationId', authenticate, getConversationMessages);
 
-// Send a message in a conversation
+// POST a new message
 router.post('/', authenticate, sendMessage);
+
+// DELETE a specific message
+router.delete('/:messageId', authenticate, deleteMessage);
+router.post('/:messageId/report', authenticate, reportMessage);
+router.post('/:conversationId/block', authenticate, blockConversation);
+router.post('/:conversationId/unblock', authenticate, unblockConversation);
+
 
 module.exports = router;

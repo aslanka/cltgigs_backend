@@ -33,10 +33,14 @@ exports.createBid = async (req, res) => {
       conversation = new Conversation({
         gig_id,
         gig_owner_id: gig.user_id,
-        bidder_id: userId
+        bidder_id: userId,
+        bid_id: newBid._id  // Use correct field name as per schema
       });
       await conversation.save();
     }
+    
+    newBid.conversation_id = conversation._id;
+    await newBid.save();
 
     const newMessage = new Message({
       conversation_id: conversation._id,
@@ -48,7 +52,7 @@ exports.createBid = async (req, res) => {
     return res.status(201).json({
       message: 'Bid placed successfully',
       bidId: newBid._id,
-      conversationId: conversation._id
+      conversation_id: conversation._id
     });
   } catch (err) {
     console.error(err);

@@ -1,47 +1,98 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
+import { useParams, useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import moment from 'moment';
 
 export default function Messages() {
   const { token, userData } = useContext(AuthContext);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedGigFilter, setSelectedGigFilter] = useState('All Gigs');
-  const [selectedMsgFilter, setSelectedMsgFilter] = useState('All Messages');
+  const userId = userData?.userId || null;
+  const navigate = useNavigate();
+
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [attachment, setAttachment] = useState(null);
-  const [activeGig, setActiveGig] = useState({
-    title: 'House Painting Project',
-    budget: 2500,
-    bid: 2200,
-    status: 'In Discussion'
-  });
-  const [otherUserRating, setOtherUserRating] = useState(4.2);
-  const [otherUserReviewsCount, setOtherUserReviewsCount] = useState(48);
-  const [otherUserMemberSince, setOtherUserMemberSince] = useState('2023');
-  const [otherUserGigsCompleted, setOtherUserGigsCompleted] = useState(89);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingUser, setTypingUser] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
+  const socketRef = useRef(null);
+  const { conversationId } = useParams();
+
+  // 1. Connect to Socket.io
   useEffect(() => {
     if (!token) return;
-    axios.get('/messages')
+    socketRef.current = io('http://localhost:4000', {
+      auth: { token },
+    });
+
+    socketRef.current.on('connect_error', (err) => {
+      console.error('Socket connect error:', err.message);
+    });
+
+    // Real-time typing indicator
+    socketRef.current.on('typing', ({ userId: typingId }) => {
+      if (typingId !== userId) {
+        setTypingUser(typingId);
+        setIsTyping(true);
+        setTimeout(() => setIsTyping(false), 2000);
+      }
+    });
+
+    // Real-time newMessage
+    socketRef.current.on('newMessage', (msgData) => {
+      if (msgData.conversation_id === activeConversation?._id) {
+        setMessages((prev) => [...prev, msgData]);
+      }
+    });
+
+    // Real-time deletion
+    socketRef.current.on('messageDeleted', ({ messageId }) => {
+      setMessages((prev) => prev.filter((m) => m._id !== messageId));
+    });
+
+    return () => {
+      socketRef.current.disconnect();
+    };
+  }, [token, userId, activeConversation]);
+
+  // 2. Fetch user conversations
+  useEffect(() => {
+    if (!token) return;
+    axios
+      .get('/messages')
       .then((res) => {
-        const data = res.data.map((c) => ({ ...c }));
-        setConversations(data);
+        // Filter out conversations where the gig doesn't exist or is unavailable
+        const validConversations = res.data.filter((conv) => conv.gigTitle && conv.gigTitle.trim() !== '');
+        setConversations(validConversations);
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error('Error fetching conversations:', err));
   }, [token]);
 
+  // 3. If there's a conversationId param, pre-select it
+  useEffect(() => {
+    if (!conversationId || !conversations.length) return;
+    const found = conversations.find(
+      (c) => c._id === conversationId || c.conversationId === conversationId
+    );
+    if (found) handleSelectConversation(found);
+  }, [conversationId, conversations]);
+
+  // 4. Load messages when a conversation is active
   useEffect(() => {
     if (!activeConversation) {
       setMessages([]);
       return;
     }
-    axios.get(`/messages/${activeConversation.conversationId}`)
+    socketRef.current.emit('joinConversation', activeConversation._id);
+
+    axios
+      .get(`/messages/${activeConversation._id}`)
       .then((res) => setMessages(res.data))
-      .catch((err) => console.error(err));
+      .catch((err) => console.error('Error fetching messages:', err));
   }, [activeConversation]);
 
   const handleSelectConversation = (conv) => {
@@ -50,278 +101,346 @@ export default function Messages() {
     setAttachment(null);
   };
 
+  // Sends a new message
   const handleSendMessage = async () => {
     if (!newMessage.trim() && !attachment) return;
+
     try {
-      let attachmentId = null;
       if (attachment) {
         const formData = new FormData();
         formData.append('file', attachment);
         formData.append('type', 'message');
-        formData.append('foreign_key_id', activeConversation.conversationId);
-        const uploadRes = await axios.post('/attachments', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+        formData.append('foreign_key_id', activeConversation._id);
+        await axios.post('/attachments', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
-        attachmentId = uploadRes.data.attachmentId;
       }
+
       await axios.post('/messages', {
-        conversationId: activeConversation.conversationId,
-        content: newMessage
+        conversationId: activeConversation._id,
+        content: newMessage,
       });
+
       setNewMessage('');
       setAttachment(null);
-      const updated = await axios.get(`/messages/${activeConversation.conversationId}`);
-      setMessages(updated.data);
     } catch (err) {
-      console.error(err);
+      console.error('Error sending message:', err);
     }
   };
 
-  const handleAttachmentChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setAttachment(e.target.files[0]);
+  // Delete message
+  const handleDeleteMessage = async (msgId) => {
+    try {
+      await axios.delete(`/messages/${msgId}`);
+      setMessages((prev) => prev.filter((m) => m._id !== msgId));
+    } catch (err) {
+      console.error('Error deleting message:', err);
     }
   };
 
-  const handleReportUser = () => {
-    alert('User reported.');
+  // Report message
+  const handleReportMessage = async (msgId) => {
+    try {
+      await axios.post(`/messages/${msgId}/report`);
+      alert('Message reported.');
+    } catch (err) {
+      console.error('Error reporting message:', err);
+    }
   };
 
-  const handleBlockUser = () => {
-    alert('User blocked.');
+  // Block conversation
+  const handleBlockConversation = async () => {
+    try {
+      await axios.post(`/messages/${activeConversation._id}/block`);
+      alert('Conversation blocked.');
+      setActiveConversation((prev) => ({ ...prev, isBlocked: true }));
+    } catch (err) {
+      console.error('Error blocking conversation:', err);
+    }
   };
 
-  const handleViewProfile = () => {
-    alert('Navigate to user profile.');
+  // Unblock conversation
+  const handleUnblockConversation = async () => {
+    try {
+      await axios.post(`/messages/${activeConversation._id}/unblock`);
+      alert('Conversation unblocked.');
+      setActiveConversation((prev) => ({ ...prev, isBlocked: false }));
+    } catch (err) {
+      console.error('Error unblocking conversation:', err);
+    }
   };
 
-  const handleAcceptBid = () => {
-    alert('Bid accepted.');
-  };
-
+  // View Gig
   const handleViewGig = () => {
-    alert('Navigate to gig details.');
-  };
-
-  const filteredConversations = conversations.filter((conv) => {
-    return conv.otherUserName.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
-  const renderStarRating = (rating) => {
-    const full = Math.floor(rating);
-    const half = rating - full >= 0.5;
-    const stars = [];
-    for (let i = 0; i < 5; i++) {
-      if (i < full) stars.push(<span key={i}>★</span>);
-      else if (i === full && half) stars.push(<span key={i}>★</span>);
-      else stars.push(<span key={i} className="text-gray-300">★</span>);
+    if (activeConversation?.gigId) {
+      navigate(`/gig/${activeConversation.gigId}`);
     }
-    return <div className="flex text-yellow-400">{stars}</div>;
   };
+
+  // View Profile
+  const handleViewProfile = () => {
+    if (activeConversation?.otherUserId) {
+      navigate(`/profile/${activeConversation.otherUserId}`);
+    }
+  };
+
+  // Typing indicator
+  const handleTyping = () => {
+    if (!activeConversation) return;
+    socketRef.current.emit('typing', {
+      conversationId: activeConversation._id,
+    });
+  };
+
+  // Filter conversations by search term
+  const filteredConversations = conversations.filter((c) =>
+    (c.otherUserName || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
-      <div className="container mx-auto p-4 flex-grow flex flex-col sm:flex-row h-[calc(100vh-2rem)] bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="sm:w-1/3 flex flex-col border-r border-gray-200">
-          <div className="p-4 border-b border-gray-200 space-y-2">
-            <input
-              type="text"
-              placeholder="Search messages..."
-              className="w-full p-2 border rounded-lg"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <div className="flex space-x-2">
-              <select
-                className="p-2 border rounded-lg flex-1"
-                value={selectedGigFilter}
-                onChange={(e) => setSelectedGigFilter(e.target.value)}
-              >
-                <option>All Gigs</option>
-                <option>House Painting</option>
-                <option>Lawn Care</option>
-                <option>Web Development</option>
-              </select>
-              <select
-                className="p-2 border rounded-lg flex-1"
-                value={selectedMsgFilter}
-                onChange={(e) => setSelectedMsgFilter(e.target.value)}
-              >
-                <option>All Messages</option>
-                <option>Unread</option>
-                <option>Archived</option>
-              </select>
-            </div>
-          </div>
-          <div className="overflow-y-auto flex-1">
-            {filteredConversations.length === 0 && (
-              <div className="p-4 text-gray-500">No conversations found.</div>
-            )}
-            {filteredConversations.map((conv) => (
-              <div
-                key={conv.conversationId}
-                onClick={() => handleSelectConversation(conv)}
-                className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${
-                  activeConversation?.conversationId === conv.conversationId ? 'bg-blue-50' : ''
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="font-semibold">{conv.otherUserName}</h3>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500">Gig: {conv.gigTitle || 'Unknown Gig'}</p>
+    <div className="min-h-screen bg-gray-100">
+      {/* Main Content */}
+      <div className="container mx-auto p-4">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="flex flex-col md:flex-row h-[calc(100vh-8rem)]">
+            {/* Conversations List */}
+            <div className="w-full md:w-1/3 border-r border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <input
+                  type="text"
+                  placeholder="Search messages..."
+                  className="w-full p-2 border rounded-lg"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
-            ))}
-          </div>
-        </div>
-
-        {!activeConversation ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            Select a conversation
-          </div>
-        ) : (
-          <div className="sm:w-2/3 flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <div className="flex items-start space-x-4">
-                  {activeConversation.otherUserPic ? (
-                    <img
-                      crossOrigin="anonymous"
-                      src={`http://localhost:4000${activeConversation.otherUserPic}`}
-                      alt="Profile"
-                      className="rounded-full w-12 h-12 object-cover"
-                    />
-                  ) : (
-                    <div className="rounded-full w-12 h-12 bg-gray-200 flex items-center justify-center text-gray-700 font-bold text-xl">
-                      {activeConversation.otherUserName.charAt(0).toUpperCase()}
+              <div className="overflow-y-auto h-full">
+                {filteredConversations.map((conv) => {
+                  const activeClass =
+                    conv._id === activeConversation?._id ? 'bg-blue-50' : '';
+                  return (
+                    <div
+                      key={conv._id}
+                      onClick={() => handleSelectConversation(conv)}
+                      className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${activeClass}`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-semibold">{conv.otherUserName}</h3>
+                          {conv.online && (
+                            <span className="bg-green-500 rounded-full w-2 h-2"></span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {moment(conv.lastMessageTime).fromNow()}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        {conv.gigTitle}
+                      </div>
+                      <p className="text-sm text-gray-500 truncate mt-1">
+                        {conv.lastMessage}
+                      </p>
                     </div>
-                  )}
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <h2 className="text-xl font-bold">{activeConversation.otherUserName}</h2>
-                      <span className="bg-green-500 rounded-full w-2 h-2" />
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      {renderStarRating(otherUserRating)}
-                      <span className="text-sm text-gray-600">
-                        ({otherUserRating.toFixed(1)} • {otherUserReviewsCount} reviews)
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Member since {otherUserMemberSince} • {otherUserGigsCompleted} gigs completed
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-2 sm:mt-0 flex space-x-2">
-                  <button onClick={handleReportUser} className="text-gray-600 hover:text-gray-800 px-3 py-1">
-                    Report
-                  </button>
-                  <button onClick={handleBlockUser} className="text-red-600 hover:text-red-800 px-3 py-1">
-                    Block
-                  </button>
-                  <button
-                    onClick={handleViewProfile}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                  >
-                    View Profile
-                  </button>
-                </div>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="bg-gray-50 p-4 border-b border-gray-200">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-              <div className="mb-2 sm:mb-0">
-                {/* Display gig title and details statically using activeConversation or related state */}
-                <h3 className="text-lg font-bold">{activeConversation.gigTitle}</h3>
-                {/* Additional gig details like bid amount can be displayed here if available */}
-              </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleAcceptBid}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm"
-                  >
-                    Accept Bid
-                  </button>
-                  <button
-                    onClick={handleViewGig}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
-                  >
-                    View Gig
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              {messages.length === 0 && (
-                <div className="text-gray-500">No messages yet. Say hello!</div>
-              )}
-              {messages.map((msg) => {
-                const isSelf = msg.sender_id === userData?.userId;
-                return (
-                  <div key={msg._id} className={`mb-4 flex ${isSelf ? 'justify-end' : 'justify-start'}`}>
-                    <div className="max-w-lg">
-                      {!isSelf && (
-                        <div className="text-xs text-gray-500 mb-1">{activeGig.title}</div>
-                      )}
+            {/* Message Area */}
+            <div className="w-full md:w-2/3 flex flex-col">
+              {/* User Profile Header */}
+              {activeConversation && (
+                <>
+                  <div className="p-4 border-b border-gray-200">
+                    <div className="flex justify-between items-start">
                       <div
-                        className={`rounded-lg px-4 py-2 ${
-                          isSelf ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'
-                        }`}
+                        className="flex items-start space-x-4 cursor-pointer"
+                        onClick={handleViewProfile}
                       >
-                        <p className="text-sm">{msg.content}</p>
-                        <p className={`text-xs mt-1 ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
-                          {moment(msg.created_at).format('h:mm A')}
+                        <img
+                          src="/api/placeholder/50/50"
+                          alt="Profile"
+                          className="rounded-full"
+                        />
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h2 className="text-xl font-bold">
+                              {activeConversation.otherUserName}
+                            </h2>
+                            <span className="bg-green-500 rounded-full w-2 h-2"></span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <div className="flex text-yellow-400">
+                              ★★★★<span className="text-gray-300">★</span>
+                            </div>
+                            <span className="text-sm text-gray-600">
+                              (4.2 • 48 reviews)
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Member since 2023 • 89 gigs completed
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        {activeConversation.isBlocked ? (
+                          <button
+                            onClick={handleUnblockConversation}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                          >
+                            Unblock Conversation
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleBlockConversation}
+                            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                          >
+                            Block Conversation
+                          </button>
+                        )}
+                        <button
+                          onClick={handleViewGig}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                        >
+                          View Gig
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Messages Area */}
+                  <div
+                    className={`flex-1 overflow-y-auto p-4 ${
+                      activeConversation.isBlocked ? 'opacity-50' : ''
+                    }`}
+                  >
+                    {messages.map((msg) => {
+                      const isSelf = msg.sender_id === userId;
+                      return (
+                        <div
+                          key={msg._id}
+                          className={`mb-4 ${
+                            isSelf ? 'flex justify-end' : 'flex justify-start'
+                          }`}
+                        >
+                          <div className="max-w-lg">
+                            {!isSelf && (
+                              <div className="text-xs text-gray-500 mb-1">
+                                Re: {activeConversation.gigTitle}
+                              </div>
+                            )}
+                            <div
+                              className={`${
+                                isSelf
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-200'
+                              } rounded-lg px-4 py-2`}
+                            >
+                              <p
+                                className={`text-sm ${
+                                  isSelf ? 'text-white' : 'text-gray-900'
+                                }`}
+                              >
+                                {msg.content}
+                              </p>
+                              {msg.file_url && (
+                                <div className="mt-2 space-y-1">
+                                  <div
+                                    className={`flex items-center space-x-2 ${
+                                      isSelf ? 'text-blue-200' : 'text-gray-600'
+                                    } text-sm`}
+                                  >
+                                    <span>📎</span>
+                                    <a
+                                      href={msg.file_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline"
+                                    >
+                                      View Attachment
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+                              <p
+                                className={`text-xs ${
+                                  isSelf ? 'text-blue-200' : 'text-gray-500'
+                                } mt-1`}
+                              >
+                                {moment(msg.created_at).format('LT')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {isTyping && typingUser && typingUser !== userId && (
+                      <div className="text-sm text-gray-500 mt-2">
+                        {`User ${typingUser} is typing...`}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Input */}
+                  <div
+                    className={`p-4 border-t border-gray-200 ${
+                      activeConversation.isBlocked ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <div className="flex flex-col space-y-2">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="Type your message..."
+                          className="flex-1 p-2 border rounded-lg"
+                          value={newMessage}
+                          onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            handleTyping();
+                          }}
+                          disabled={activeConversation.isBlocked}
+                        />
+                        <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer">
+                          📎
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files[0])
+                                setAttachment(e.target.files[0]);
+                            }}
+                            disabled={activeConversation.isBlocked}
+                          />
+                        </label>
+                        <button
+                          onClick={handleSendMessage}
+                          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                          disabled={activeConversation.isBlocked}
+                        >
+                          Send
+                        </button>
+                      </div>
+                      <div className="flex items-center text-sm text-gray-500">
+                        <p>
+                          Drag & drop files or click the attachment button. Max
+                          size: 25MB
                         </p>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </>
+              )}
 
-            <div className="p-4 border-t border-gray-200">
-              <div className="flex flex-col space-y-2">
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    placeholder="Type your message..."
-                    className="flex-1 p-2 border rounded-lg"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSendMessage();
-                    }}
-                  />
-                  <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer">
-                    📎
-                    <input
-                      type="file"
-                      className="hidden"
-                      onChange={handleAttachmentChange}
-                    />
-                  </label>
-                  <button
-                    onClick={handleSendMessage}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-                  >
-                    Send
-                  </button>
+              {/* No Conversation Selected */}
+              {!activeConversation && (
+                <div className="flex-1 flex items-center justify-center text-gray-400">
+                  Select a conversation
                 </div>
-                {attachment && (
-                  <div className="text-sm text-gray-500">
-                    Selected file: {attachment.name}
-                  </div>
-                )}
-                <p className="text-xs text-gray-400">
-                  Drag & drop or click the attachment button. Max size: 25MB.
-                </p>
-              </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

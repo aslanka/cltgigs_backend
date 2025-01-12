@@ -21,78 +21,74 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    <div className="bg-gray-100 min-h-screen">
+    <div className="bg-gray-100">
       <Navbar />
-      <div className="container mx-auto p-4">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-          <Route path="/gigs/:gigId" element={<GigDetails />} />
-          <Route
-            path="/gigs/:gigId/edit"
-            element={
-              <ProtectedRoute>
-                <EditGig />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/create-gig"
-            element={
-              <ProtectedRoute>
-                <CreateGig />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/mygigs"
-            element={
-              <ProtectedRoute>
-                <MyGigs />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/mybids" element={
-                <MyBids />
-              } />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/communitycard/:userId"
-            element={
-              <ProtectedRoute>
-                <CommunityCard />
-              </ProtectedRoute>
-            }
-          />
+        <Route path="/gigs/:gigId" element={<GigDetails />} />
+        <Route
+          path="/gigs/:gigId/edit"
+          element={
+            <ProtectedRoute>
+              <EditGig />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-gig"
+          element={
+            <ProtectedRoute>
+              <CreateGig />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mygigs"
+          element={
+            <ProtectedRoute>
+              <MyGigs />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/mybids" element={<MyBids />} />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/communitycard/:userId"
+          element={
+            <ProtectedRoute>
+              <CommunityCard />
+            </ProtectedRoute>
+          }
+        />
 
-          <Route
-            path="/messages"
-            element={
-              <ProtectedRoute>
-                <Messages />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/profile/:userId" element={<CommunityCard />} />
-        </Routes>
-      </div>
+        <Route
+          path="/messages"
+          element={
+            <ProtectedRoute>
+              <Messages />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/profile/:userId" element={<CommunityCard />} />
+      </Routes>
     </div>
   );
 }

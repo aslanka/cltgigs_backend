@@ -158,10 +158,14 @@ exports.createBid = async (req, res) => {
       conversation = new Conversation({
         gig_id,
         gig_owner_id: gig.user_id,
-        bidder_id: userId
+        bidder_id: userId,
+        bid_id: newBid._id  // Use correct field name as per schema
       });
       await conversation.save();
     }
+    
+    newBid.conversation_id = conversation._id;
+    await newBid.save();
 
     const newMessage = new Message({
       conversation_id: conversation._id,
@@ -173,7 +177,7 @@ exports.createBid = async (req, res) => {
     return res.status(201).json({
       message: 'Bid placed successfully',
       bidId: newBid._id,
-      conversationId: conversation._id
+      conversation_id: conversation._id
     });
   } catch (err) {
     console.error(err);
@@ -212,25 +216,20 @@ exports.acceptBid = async (req, res) => {
   try {
     const { bidId } = req.params;
     const userId = req.user.userId;
-
     const bid = await Bid.findById(bidId).populate('gig_id');
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
 
-    // Ensure current user is the gig owner
     if (bid.gig_id.user_id.toString() !== userId) {
       return res.status(403).json({ error: 'Only gig owner can accept bids' });
     }
 
-    // Mark bid as accepted - add a field if not exists (e.g., accepted: true)
+    // Mark bid as accepted
     bid.accepted = true;
     await bid.save();
 
-    // Optionally: update gig to mark it as assigned, close other bids
+    // Update gig assignment if needed
     bid.gig_id.assigned_bid = bid._id;
     await bid.gig_id.save();
-
-    // Optionally: end conversation or mark it inactive
-    // e.g., Conversation.findByIdAndUpdate(bid.conversation_id, { active: false })
 
     res.json({ message: 'Bid accepted', bidId: bid._id });
   } catch (err) {
@@ -244,7 +243,6 @@ exports.denyBid = async (req, res) => {
   try {
     const { bidId } = req.params;
     const userId = req.user.userId;
-
     const bid = await Bid.findById(bidId).populate('gig_id');
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
 
@@ -252,9 +250,37 @@ exports.denyBid = async (req, res) => {
       return res.status(403).json({ error: 'Only gig owner can deny bids' });
     }
 
-    // Remove or mark bid as denied
-    await bid.remove();
-    res.json({ message: 'Bid denied and removed', bidId });
+    // Mark bid as rejected instead of deleting
+    bid.rejected = true;
+    await bid.save();
+
+    // Optionally, remove related conversation or mark it inactive
+    // For example:
+    // await Conversation.findOneAndDelete({ gig_id: bid.gig_id._id, bidder_id: bid.user_id });
+
+    res.json({ message: 'Bid denied', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Optional undeny endpoint to revert a rejection
+exports.undenyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can undeny bids' });
+    }
+
+    bid.rejected = false;
+    await bid.save();
+
+    res.json({ message: 'Bid undenied', bidId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -486,11 +512,18 @@ exports.deleteGig = async (req, res) => {
 
 
 --- controllers\messageController.js ---
+// controllers/messageController.js
+const { getIO } = require('../utils/socketIOInstance');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Gig = require('../models/Gig');
+const Bid = require('../models/Bid');
+const mongoose = require('mongoose');
+// We'll emit to socket.io from within these methods:
+// We'll create a shared instance
 
+// GET /api/messages (all conversations for user)
 exports.getAllConversationsForUser = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -503,67 +536,89 @@ exports.getAllConversationsForUser = async (req, res) => {
       .sort({ created_at: -1 })
       .lean();
 
-    // Populate other user + gig info
+    // Populate conversation data
     for (let conv of conversations) {
       const gig = await Gig.findById(conv.gig_id).lean();
-      conv.gigTitle = gig ? gig.title : 'Unknown Gig';
+      conv.gigTitle = gig ? gig.title : 'No Title';
 
-      let otherUserId = conv.gig_owner_id.toString() === userId
+      const otherUserId = (conv.gig_owner_id.toString() === userId)
         ? conv.bidder_id
         : conv.gig_owner_id;
-      let otherUser = await User.findById(otherUserId).lean();
-      conv.otherUserName = otherUser ? otherUser.name : 'Unknown';
+      const otherUser = await User.findById(otherUserId).lean();
+      conv.otherUserName = otherUser?.name || 'Unknown User';
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
 
-      // Keep conversationId consistent
-      conv.conversationId = conv._id;
+      // Mark if conversation is blocked for the current user
+      if (conv.gig_owner_id.toString() === userId && conv.blocked_by_owner) {
+        conv.isBlocked = true;
+      } else if (conv.bidder_id.toString() === userId && conv.blocked_by_bidder) {
+        conv.isBlocked = true;
+      } else {
+        conv.isBlocked = false;
+      }
     }
 
     res.json(conversations);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 };
 
+// GET /api/messages/:conversationId
 exports.getConversationMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-    if (
-      conversation.gig_owner_id.toString() !== req.user.userId &&
-      conversation.bidder_id.toString() !== req.user.userId
-    ) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const messages = await Message.find({ conversation_id: conversationId })
-      .sort({ created_at: 1 })
-      .lean();
-
-    for (let msg of messages) {
-      const sender = await User.findById(msg.sender_id).lean();
-      msg.senderName = sender ? sender.name : 'Unknown';
-    }
-
-    res.json(messages);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
-  }
-};
-
-exports.sendMessage = async (req, res) => {
-  try {
-    const { conversationId, content } = req.body;
     const userId = req.user.userId;
 
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+
+    // Check if user is part of this conversation
+    if (
+      conversation.gig_owner_id.toString() !== userId &&
+      conversation.bidder_id.toString() !== userId
+    ) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    // Check if user has blocked conversation
+    if (
+      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.json([]); // Return empty if blocked from own side
+    }
+
+    const msgs = await Message.find({ conversation_id: conversationId })
+      .sort({ created_at: 1 })
+      .lean();
+
+    res.json(msgs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages (send a new message)
+exports.sendMessage = async (req, res) => {
+  try {
+    const { conversationId, content } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Missing conversationId' });
+    }
+
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
     if (
       conversation.gig_owner_id.toString() !== userId &&
       conversation.bidder_id.toString() !== userId
@@ -571,17 +626,131 @@ exports.sendMessage = async (req, res) => {
       return res.status(403).json({ error: 'Not part of this conversation' });
     }
 
+    if (
+      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.status(403).json({ error: 'Conversation blocked' });
+    }
+
     const newMsg = new Message({
       conversation_id: conversationId,
       sender_id: userId,
-      content
+      content,
     });
     await newMsg.save();
+
+    // Emit an event using the imported io instance
+    const io = getIO();
+    io.to(conversationId).emit('newMessage', {
+      _id: newMsg._id,
+      conversation_id: newMsg.conversation_id,
+      sender_id: userId,
+      content: newMsg.content,
+      created_at: newMsg.created_at,
+    });
 
     return res.status(201).json({ message: 'Message sent' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// DELETE /api/messages/:messageId (delete a message)
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.userId;
+
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    // Only sender can delete
+    if (msg.sender_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Cannot delete others messages' });
+    }
+
+    await Message.deleteOne({ _id: messageId });
+    // Optionally broadcast a "messageDeleted" event
+    io.to(msg.conversation_id.toString()).emit('messageDeleted', { messageId });
+
+    res.json({ message: 'Message deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:messageId/report
+exports.reportMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    msg.reported = true;
+    await msg.save();
+    res.json({ message: 'Message reported' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/block
+exports.blockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = true;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = true;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation blocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/unblock
+exports.unblockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = false;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = false;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation unblocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
 };
 
@@ -595,14 +764,13 @@ exports.getReviewsByUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const reviews = await Review.find({ user_id: userId })
-      .populate('reviewer_id', 'name profile_pic_url')  // populate reviewer fields
+      .populate('reviewer_id', 'name profile_pic_url')  // Ensure this line is present
       .sort({ date: -1 });
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 };
-
 // Create a new review for a user
 exports.createReview = async (req, res) => {
   try {
@@ -826,7 +994,10 @@ const bidSchema = new mongoose.Schema({
   gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true },
-  message: { type: String }, // we store the initial message for the bid
+  message: { type: String }, // initial message
+  accepted: { type: Boolean, default: false },
+  rejected: { type: Boolean, default: false },
+  conversation_id: { type: mongoose.Schema.Types.ObjectId }, // Added field
   created_at: { type: Date, default: Date.now }
 });
 
@@ -840,8 +1011,13 @@ const conversationSchema = new mongoose.Schema({
   gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
   gig_owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   bidder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  bid_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Bid', required: true },
+  blocked_by_owner: { type: Boolean, default: false },
+  blocked_by_bidder: { type: Boolean, default: false },
+  locked: { type: Boolean, default: false },  // Newly added field
   created_at: { type: Date, default: Date.now }
 });
+
 
 module.exports = mongoose.model('Conversation', conversationSchema);
 
@@ -872,7 +1048,9 @@ const messageSchema = new mongoose.Schema({
     required: true
   },
   sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String, default: '' }, 
+  content: { type: String, default: '' },
+  file_url: { type: String, default: '' }, // If there's an attachment
+  reported: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now }
 });
 
@@ -1006,7 +1184,7 @@ const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
 const { createBid, getBidsForGig, acceptBid, // Ensure this is imported
     denyBid,   // Ensure this is imported
-    getMyBids } = require('../controllers/bidController');
+    getMyBids, undenyBid} = require('../controllers/bidController');
 
 // Place a bid (must be logged in)
 router.post('/', authenticate, createBid);
@@ -1017,6 +1195,7 @@ router.get('/:gigId', authenticate, getBidsForGig);
 router.post('/:bidId/accept', authenticate, acceptBid);
 router.post('/:bidId/deny', authenticate, denyBid);
 router.get('/my', authenticate, getMyBids);
+router.post('/:bidId/undeny', authenticate, undenyBid);
 
 
 module.exports = router;
@@ -1059,23 +1238,35 @@ module.exports = router;
 
 
 --- routes\messageRoutes.js ---
+// routes/messageRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
 const {
   getAllConversationsForUser,
   getConversationMessages,
-  sendMessage
+  sendMessage,
+  deleteMessage,
+  reportMessage,
+  blockConversation,
+  unblockConversation
 } = require('../controllers/messageController');
 
-// All user conversations
+// GET all user conversations
 router.get('/', authenticate, getAllConversationsForUser);
 
-// Messages in a specific conversation
+// GET messages for a specific conversation
 router.get('/:conversationId', authenticate, getConversationMessages);
 
-// Send a message in a conversation
+// POST a new message
 router.post('/', authenticate, sendMessage);
+
+// DELETE a specific message
+router.delete('/:messageId', authenticate, deleteMessage);
+router.post('/:messageId/report', authenticate, reportMessage);
+router.post('/:conversationId/block', authenticate, blockConversation);
+router.post('/:conversationId/unblock', authenticate, unblockConversation);
+
 
 module.exports = router;
 
@@ -1208,6 +1399,99 @@ passport.use(
 );
 
 
+--- utils\socketHandlers.js ---
+// utils/socketHandlers.js
+const jwt = require('jsonwebtoken');
+
+// We can store connected users by userId -> socketId if needed
+let onlineUsers = {}; // { userId: socketId }
+
+function setupSocketIO(io) {
+  // Middleware to verify JWT on connection
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('No token provided'));
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+      socket.userId = decoded.userId;
+      return next();
+    } catch (err) {
+      return next(new Error('Invalid token'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    // Store the socket for the connected user
+    onlineUsers[socket.userId] = socket.id;
+
+    socket.on('joinConversation', (conversationId) => {
+      // The user joins a specific conversation room
+      socket.join(conversationId);
+    });
+
+    // Listen for typing indicator
+    socket.on('typing', ({ conversationId }) => {
+      socket.to(conversationId).emit('typing', {
+        userId: socket.userId,
+        conversationId,
+      });
+    });
+
+    // Listen for new message
+    socket.on('newMessage', (messageData) => {
+      // Broadcast to all other users in the room
+      socket.to(messageData.conversationId).emit('newMessage', messageData);
+    });
+
+    socket.on('disconnect', () => {
+      // Cleanup
+      delete onlineUsers[socket.userId];
+    });
+  });
+}
+
+module.exports = { setupSocketIO };
+
+
+--- utils\socketIOInstance.js ---
+// utils/socketIOInstance.js
+const { Server } = require('socket.io');
+
+let io;
+
+function init(server) {
+  io = new Server(server, {
+    cors: {
+      origin: 'http://localhost:5173', // Allow your frontend origin
+      methods: ['GET', 'POST'],        // Allowed HTTP methods
+      credentials: true,               // Allow credentials (if needed)
+    },
+  });
+
+  // Optional: Add event listeners for debugging
+  io.on('connection', (socket) => {
+    console.log('A user connected:', socket.id);
+
+    socket.on('disconnect', () => {
+      console.log('User disconnected:', socket.id);
+    });
+  });
+
+  return io;
+}
+
+function getIO() {
+  if (!io) {
+    throw new Error('Socket.io not initialized!');
+  }
+  return io;
+}
+
+module.exports = {
+  init,
+  getIO,
+};
+
 --- server.js ---
 require('dotenv').config();
 const express = require('express');
@@ -1218,6 +1502,9 @@ const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const path = require('path');
 const passport = require('passport');
+const http = require('http'); // For Socket.io
+const { init } = require('./utils/socketIOInstance'); // Import Socket.IO initialization
+const { setupSocketIO } = require('./utils/socketHandlers'); // Import Socket.IO event handlers
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -1226,13 +1513,25 @@ const gigRoutes = require('./routes/gigRoutes');
 const bidRoutes = require('./routes/bidRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const attachmentRoutes = require('./routes/attachmentRoutes');
-const reviewRoutes = require('./routes/reviewRoutes')
+const reviewRoutes = require('./routes/reviewRoutes');
 
-// Init
+// Initialize Express app
 const app = express();
 
-const allowedOrigins = ['http://localhost:4000', 'http://localhost:5173'];
+// Create HTTP server
+const server = http.createServer(app);
 
+// Initialize Socket.IO
+const io = init(server); // Initialize Socket.IO and get the io instance
+console.log('Socket.IO initialized:', io !== undefined); // Debugging: Confirm initialization
+
+// Set up Socket.IO event handlers
+setupSocketIO(io);
+
+app.set('io', io);
+
+// CORS configuration
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -1245,6 +1544,7 @@ const corsOptions = {
   credentials: true,
 };
 
+// Middleware
 app.use(cors(corsOptions));
 app.use(helmet());
 app.use(xss());
@@ -1252,34 +1552,37 @@ app.use(express.json());
 
 // Rate Limiter
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
+// Passport initialization
 app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
   res.header('Access-Control-Allow-Methods', 'GET');
-  res.header('Access-Control-Allow-Origin', '*');
-
   next();
 });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Connect Mongo
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gig-platform', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
-  console.log('MongoDB connected');
-}).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gig-platform', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log('MongoDB connected');
+  })
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 
+// Passport strategies
 require('./strategies/passportStrategies');
 
 // Routes
@@ -1291,14 +1594,10 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 
-// Serve React build if you want to deploy front+back together
-// app.use(express.static(path.join(__dirname, 'client', 'dist')));
-// app.get('*', (req, res) => {
-//   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
-// });
+// In production, serve React build or other front-end (omitted for brevity)
 
+// Start the server
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-

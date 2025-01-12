@@ -6,14 +6,13 @@ exports.getReviewsByUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const reviews = await Review.find({ user_id: userId })
-      .populate('reviewer_id', 'name profile_pic_url')  // populate reviewer fields
+      .populate('reviewer_id', 'name profile_pic_url')  // Ensure this line is present
       .sort({ date: -1 });
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 };
-
 // Create a new review for a user
 exports.createReview = async (req, res) => {
   try {
