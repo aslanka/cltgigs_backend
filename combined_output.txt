@@ -610,6 +610,12 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
+    // Fetch the sender's name
+    const sender = await User.findById(userId);
+    if (!sender) {
+      return res.status(404).json({ error: 'Sender not found' });
+    }
+
     const conversation = await Conversation.findById(conversationId).populate('gig_owner_id bidder_id');
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
@@ -660,8 +666,8 @@ exports.sendMessage = async (req, res) => {
     const notification = new Notification({
       user_id: recipientId,
       type: 'message',
-      message: `You have a new message from ${req.user.name}`,
-      link: `/messages/${conversationId}`,
+      message: `You have a new message from ${sender.name}`, // Use the sender's name
+      link: `/messages/${conversationId}`, // Add the link to the conversation
     });
     await notification.save();
 

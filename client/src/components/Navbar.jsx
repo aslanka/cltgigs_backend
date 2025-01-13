@@ -14,19 +14,18 @@ const Navbar = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profile, setProfile] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const mobileMenuRef = useRef();
+  const profileDropdownRef = useRef();
 
+  // Fetch profile and notifications
   useEffect(() => {
     if (token && userData?.userId) {
       axios.get(`/users/${userData.userId}`)
         .then((res) => setProfile(res.data))
         .catch((err) => console.error(err));
 
-      axios.get('/notifications')
-        .then((res) => {
-          setUnreadCount(res.data.filter((n) => !n.read).length);
-        })
-        .catch((err) => console.error('Error fetching notifications:', err));
+      fetchNotifications();
 
       const socket = io('http://localhost:4000', {
         auth: { token },
@@ -42,22 +41,38 @@ const Navbar = () => {
     }
   }, [token, userData]);
 
+  // Fetch notifications
+  const fetchNotifications = async () => {
+    try {
+      const response = await axios.get('/notifications');
+      setUnreadCount(response.data.filter((n) => !n.read).length);
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  };
+
+  // Handle click outside mobile menu
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
         setMobileMenuOpen(false);
+      }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+        setIsProfileDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Handle logout
   const handleLogout = () => {
     logout();
     setMobileMenuOpen(false);
     navigate('/');
   };
 
+  // NavLink component
   const NavLink = ({ to, icon: Icon, children, onClick }) => (
     <Link
       to={to}
@@ -75,7 +90,8 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <span className="text-2xl font-bold text-blue-600">CharlotteGigs</span>
+            <span className="text-2xl font-bold text-blue-600 hidden sm:block">CharlotteGigs</span>
+            <span className="text-2xl font-bold text-blue-600 sm:hidden">CltGigs</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -87,7 +103,10 @@ const Navbar = () => {
                 
                 {/* Notifications */}
                 <button
-                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                  onClick={() => {
+                    setNotificationsOpen(!notificationsOpen);
+                    fetchNotifications(); // Refresh notifications when opening
+                  }}
                   className="relative p-2 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
                 >
                   <Bell size={20} />
@@ -98,10 +117,11 @@ const Navbar = () => {
                   )}
                 </button>
 
-                {/* Profile Menu */}
-                <div className="relative ml-3">
+                {/* Profile Dropdown */}
+                <div className="relative ml-3" ref={profileDropdownRef}>
                   <button
-                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                    onMouseEnter={() => setIsProfileDropdownOpen(true)}
+                    onMouseLeave={() => setIsProfileDropdownOpen(false)}
                     className="flex items-center space-x-2"
                   >
                     <ProfilePicture
@@ -110,6 +130,29 @@ const Navbar = () => {
                       size="8"
                     />
                   </button>
+
+                  {/* Dropdown Menu */}
+                  {isProfileDropdownOpen && (
+                    <div
+                      className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg"
+                      onMouseEnter={() => setIsProfileDropdownOpen(true)}
+                      onMouseLeave={() => setIsProfileDropdownOpen(false)}
+                    >
+                      <NavLink to="/settings" icon={Settings} onClick={() => setIsProfileDropdownOpen(false)}>
+                        Settings
+                      </NavLink>
+                      <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setIsProfileDropdownOpen(false)}>
+                        Profile
+                      </NavLink>
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center space-x-2 w-full px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <LogOut size={20} />
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -126,7 +169,10 @@ const Navbar = () => {
           <div className="md:hidden flex items-center">
             {token && (
               <button
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                onClick={() => {
+                  setNotificationsOpen(!notificationsOpen);
+                  fetchNotifications(); // Refresh notifications when opening
+                }}
                 className="relative p-2 mr-2 text-gray-700 hover:bg-blue-50 rounded-lg"
               >
                 <Bell size={20} />
@@ -181,7 +227,11 @@ const Navbar = () => {
       )}
 
       {/* Notifications Panel */}
-      <Notifications isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
+      <Notifications
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        refreshNotifications={fetchNotifications} // Pass the refresh function
+      />
     </nav>
   );
 };

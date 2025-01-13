@@ -58,7 +58,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/mybids" element={<MyBids />} />
+          <Route
+            path="/mybids"
+            element={
+              <ProtectedRoute>
+                <MyBids />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/settings"
             element={
@@ -81,6 +88,14 @@ function App() {
           />
           <Route
             path="/messages"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messages/:conversationId"
             element={
               <ProtectedRoute>
                 <Messages />

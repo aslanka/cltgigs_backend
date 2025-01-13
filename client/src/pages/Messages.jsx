@@ -11,6 +11,7 @@ export default function Messages() {
   const { token, userData } = useContext(AuthContext);
   const userId = userData?.userId || null;
   const navigate = useNavigate();
+  const { conversationId: urlConversationId } = useParams();
 
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -23,7 +24,6 @@ export default function Messages() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const socketRef = useRef(null);
-  const { conversationId } = useParams();
 
   // 1. Connect to Socket.io
   useEffect(() => {
@@ -77,12 +77,12 @@ export default function Messages() {
 
   // 3. If there's a conversationId param, pre-select it
   useEffect(() => {
-    if (!conversationId || !conversations.length) return;
+    if (!urlConversationId || !conversations.length) return;
     const found = conversations.find(
-      (c) => c._id === conversationId || c.conversationId === conversationId
+      (c) => c._id === urlConversationId || c.conversationId === urlConversationId
     );
     if (found) handleSelectConversation(found);
-  }, [conversationId, conversations]);
+  }, [urlConversationId, conversations]);
 
   // 4. Load messages when a conversation is active
   useEffect(() => {
@@ -102,6 +102,7 @@ export default function Messages() {
     setActiveConversation(conv);
     setNewMessage('');
     setAttachment(null);
+    navigate(`/messages/${conv._id}`); // Update the URL with the conversation ID
   };
 
   // Sends a new message
