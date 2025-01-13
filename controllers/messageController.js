@@ -7,6 +7,7 @@ const Gig = require('../models/Gig');
 const Bid = require('../models/Bid');
 const mongoose = require('mongoose');
 // We'll emit to socket.io from within these methods:
+const Notification = require('../models/Notification');
 // We'll create a shared instance
 
 // GET /api/messages (all conversations for user)
@@ -89,7 +90,6 @@ exports.getConversationMessages = async (req, res) => {
   }
 };
 
-// POST /api/messages (send a new message)
 exports.sendMessage = async (req, res) => {
   try {
     const { conversationId, content, file_url } = req.body;
@@ -100,33 +100,37 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
-    const conversation = await Conversation.findById(conversationId);
+    const conversation = await Conversation.findById(conversationId).populate('gig_owner_id bidder_id');
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
+    // Check if the user is part of the conversation
     if (
-      conversation.gig_owner_id.toString() !== userId &&
-      conversation.bidder_id.toString() !== userId
+      conversation.gig_owner_id._id.toString() !== userId &&
+      conversation.bidder_id._id.toString() !== userId
     ) {
       return res.status(403).json({ error: 'Not part of this conversation' });
     }
 
+    // Check if the conversation is blocked
     if (
-      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
-      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+      (conversation.gig_owner_id._id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id._id.toString() === userId && conversation.blocked_by_bidder)
     ) {
       return res.status(403).json({ error: 'Conversation blocked' });
     }
 
+    // Create and save the new message
     const newMsg = new Message({
       conversation_id: conversationId,
       sender_id: userId,
       content,
-      file_url
+      file_url,
     });
     await newMsg.save();
 
+    // Emit the new message to the conversation room
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
       _id: newMsg._id,
@@ -136,6 +140,23 @@ exports.sendMessage = async (req, res) => {
       file_url: newMsg.file_url,
       created_at: newMsg.created_at,
     });
+
+    // Determine the recipient of the message
+    const recipientId = conversation.gig_owner_id._id.toString() === userId
+      ? conversation.bidder_id._id
+      : conversation.gig_owner_id._id;
+
+    // Create a notification for the recipient
+    const notification = new Notification({
+      user_id: recipientId,
+      type: 'message',
+      message: `You have a new message from ${req.user.name}`,
+      link: `/messages/${conversationId}`,
+    });
+    await notification.save();
+
+    // Emit the notification to the recipient
+    io.to(recipientId.toString()).emit('newNotification', notification);
 
     return res.status(201).json({ message: 'Message sent', newMsg });
   } catch (err) {

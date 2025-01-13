@@ -1,5 +1,7 @@
 const Bid = require('../models/Bid');
 const Gig = require('../models/Gig');
+const { getIO } = require('../utils/socketIOInstance');
+const Notification = require('../models/Notification')
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 
@@ -8,55 +10,37 @@ exports.createBid = async (req, res) => {
     const { gig_id, amount, message } = req.body;
     const userId = req.user.userId;
 
-    const gig = await Gig.findById(gig_id);
+    const gig = await Gig.findById(gig_id).populate('user_id');
     if (!gig) {
       return res.status(404).json({ error: 'Gig not found' });
     }
-    if (gig.user_id.toString() === userId) {
-      return res.status(403).json({ error: 'Cannot bid on your own gig.' });
-    }
 
+    // Create a new bid
     const newBid = new Bid({
       gig_id,
       user_id: userId,
       amount,
-      message
+      message,
     });
     await newBid.save();
 
-    let conversation = await Conversation.findOne({
-      gig_id,
-      gig_owner_id: gig.user_id,
-      bidder_id: userId
+    // Create a notification for the gig owner
+    const notification = new Notification({
+      user_id: gig.user_id._id,
+      type: 'bid',
+      message: `You have a new bid of $${amount} on your gig: ${gig.title}`,
+      link: `/gig/${gig_id}`,
     });
-    if (!conversation) {
-      conversation = new Conversation({
-        gig_id,
-        gig_owner_id: gig.user_id,
-        bidder_id: userId,
-        bid_id: newBid._id  // Use correct field name as per schema
-      });
-      await conversation.save();
-    }
-    
-    newBid.conversation_id = conversation._id;
-    await newBid.save();
+    await notification.save();
 
-    const newMessage = new Message({
-      conversation_id: conversation._id,
-      sender_id: userId,
-      content: message || `Hi, I'm placing a bid of $${amount}`
-    });
-    await newMessage.save();
+    // Emit the notification to the gig owner via Socket.IO
+    const io = getIO();
+    io.to(gig.user_id._id.toString()).emit('newNotification', notification);
 
-    return res.status(201).json({
-      message: 'Bid placed successfully',
-      bidId: newBid._id,
-      conversation_id: conversation._id
-    });
+    res.status(201).json({ message: 'Bid placed successfully', newBid });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 };
 

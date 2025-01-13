@@ -121,6 +121,8 @@ exports.loginUser = async (req, res) => {
 --- controllers\bidController.js ---
 const Bid = require('../models/Bid');
 const Gig = require('../models/Gig');
+const { getIO } = require('../utils/socketIOInstance');
+const Notification = require('../models/Notification')
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 
@@ -129,55 +131,37 @@ exports.createBid = async (req, res) => {
     const { gig_id, amount, message } = req.body;
     const userId = req.user.userId;
 
-    const gig = await Gig.findById(gig_id);
+    const gig = await Gig.findById(gig_id).populate('user_id');
     if (!gig) {
       return res.status(404).json({ error: 'Gig not found' });
     }
-    if (gig.user_id.toString() === userId) {
-      return res.status(403).json({ error: 'Cannot bid on your own gig.' });
-    }
 
+    // Create a new bid
     const newBid = new Bid({
       gig_id,
       user_id: userId,
       amount,
-      message
+      message,
     });
     await newBid.save();
 
-    let conversation = await Conversation.findOne({
-      gig_id,
-      gig_owner_id: gig.user_id,
-      bidder_id: userId
+    // Create a notification for the gig owner
+    const notification = new Notification({
+      user_id: gig.user_id._id,
+      type: 'bid',
+      message: `You have a new bid of $${amount} on your gig: ${gig.title}`,
+      link: `/gig/${gig_id}`,
     });
-    if (!conversation) {
-      conversation = new Conversation({
-        gig_id,
-        gig_owner_id: gig.user_id,
-        bidder_id: userId,
-        bid_id: newBid._id  // Use correct field name as per schema
-      });
-      await conversation.save();
-    }
-    
-    newBid.conversation_id = conversation._id;
-    await newBid.save();
+    await notification.save();
 
-    const newMessage = new Message({
-      conversation_id: conversation._id,
-      sender_id: userId,
-      content: message || `Hi, I'm placing a bid of $${amount}`
-    });
-    await newMessage.save();
+    // Emit the notification to the gig owner via Socket.IO
+    const io = getIO();
+    io.to(gig.user_id._id.toString()).emit('newNotification', notification);
 
-    return res.status(201).json({
-      message: 'Bid placed successfully',
-      bidId: newBid._id,
-      conversation_id: conversation._id
-    });
+    res.status(201).json({ message: 'Bid placed successfully', newBid });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 };
 
@@ -533,6 +517,7 @@ const Gig = require('../models/Gig');
 const Bid = require('../models/Bid');
 const mongoose = require('mongoose');
 // We'll emit to socket.io from within these methods:
+const Notification = require('../models/Notification');
 // We'll create a shared instance
 
 // GET /api/messages (all conversations for user)
@@ -615,7 +600,6 @@ exports.getConversationMessages = async (req, res) => {
   }
 };
 
-// POST /api/messages (send a new message)
 exports.sendMessage = async (req, res) => {
   try {
     const { conversationId, content, file_url } = req.body;
@@ -626,33 +610,37 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
-    const conversation = await Conversation.findById(conversationId);
+    const conversation = await Conversation.findById(conversationId).populate('gig_owner_id bidder_id');
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
+    // Check if the user is part of the conversation
     if (
-      conversation.gig_owner_id.toString() !== userId &&
-      conversation.bidder_id.toString() !== userId
+      conversation.gig_owner_id._id.toString() !== userId &&
+      conversation.bidder_id._id.toString() !== userId
     ) {
       return res.status(403).json({ error: 'Not part of this conversation' });
     }
 
+    // Check if the conversation is blocked
     if (
-      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
-      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+      (conversation.gig_owner_id._id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id._id.toString() === userId && conversation.blocked_by_bidder)
     ) {
       return res.status(403).json({ error: 'Conversation blocked' });
     }
 
+    // Create and save the new message
     const newMsg = new Message({
       conversation_id: conversationId,
       sender_id: userId,
       content,
-      file_url
+      file_url,
     });
     await newMsg.save();
 
+    // Emit the new message to the conversation room
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
       _id: newMsg._id,
@@ -662,6 +650,23 @@ exports.sendMessage = async (req, res) => {
       file_url: newMsg.file_url,
       created_at: newMsg.created_at,
     });
+
+    // Determine the recipient of the message
+    const recipientId = conversation.gig_owner_id._id.toString() === userId
+      ? conversation.bidder_id._id
+      : conversation.gig_owner_id._id;
+
+    // Create a notification for the recipient
+    const notification = new Notification({
+      user_id: recipientId,
+      type: 'message',
+      message: `You have a new message from ${req.user.name}`,
+      link: `/messages/${conversationId}`,
+    });
+    await notification.save();
+
+    // Emit the notification to the recipient
+    io.to(recipientId.toString()).emit('newNotification', notification);
 
     return res.status(201).json({ message: 'Message sent', newMsg });
   } catch (err) {
@@ -769,6 +774,70 @@ exports.unblockConversation = async (req, res) => {
   }
 };
 
+
+--- controllers\notificationController.js ---
+// controllers/notificationController.js
+const Notification = require('../models/Notification');
+
+// Get all notifications for a user
+exports.getNotifications = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const notifications = await Notification.find({ user_id: userId })
+      .sort({ created_at: -1 }) // Sort by most recent first
+      .limit(50); // Limit to 50 notifications
+    res.json(notifications);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Mark a notification as read
+exports.markAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { read: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    res.json({ message: 'Notification marked as read', notification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Mark all notifications as read
+exports.markAllAsRead = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    await Notification.updateMany(
+      { user_id: userId, read: false },
+      { read: true }
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Delete a notification
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    await Notification.findByIdAndDelete(notificationId);
+    res.json({ message: 'Notification deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
 
 --- controllers\reviewController.js ---
 const Review = require('../models/Review');
@@ -1125,6 +1194,36 @@ const messageSchema = new mongoose.Schema({
 module.exports = mongoose.model('Message', messageSchema);
 
 
+--- models\Notification.js ---
+// models/Notification.js
+const mongoose = require('mongoose');
+
+const notificationSchema = new mongoose.Schema({
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // User who receives the notification
+  type: { type: String, required: true, enum: ['message', 'bid'] }, // Type of notification
+  message: { type: String, required: true }, // Notification message
+  read: { type: Boolean, default: false }, // Whether the notification has been read
+  link: { type: String }, // Optional link to redirect the user (e.g., to a message or gig)
+  created_at: { type: Date, default: Date.now }, // Timestamp
+});
+
+module.exports = mongoose.model('Notification', notificationSchema);
+
+--- models\Report.js ---
+// models/Report.js
+const mongoose = require('mongoose');
+
+const reportSchema = new mongoose.Schema({
+  reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  contentId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  contentType: { type: String, required: true },
+  reportDetails: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+});
+
+module.exports = mongoose.model('Report', reportSchema);
+
 --- models\Review.js ---
 const mongoose = require('mongoose');
 
@@ -1410,6 +1509,62 @@ router.post('/:conversationId/unblock', authenticate, unblockConversation);
 module.exports = router;
 
 
+--- routes\notificationRoutes.js ---
+// routes/notificationRoutes.js
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  getNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+} = require('../controllers/notificationController');
+
+// Get all notifications for the authenticated user
+router.get('/', authenticate, getNotifications);
+
+// Mark a notification as read
+router.put('/:notificationId/read', authenticate, markAsRead);
+
+// Mark all notifications as read
+router.put('/read-all', authenticate, markAllAsRead);
+
+// Delete a notification
+router.delete('/:notificationId', authenticate, deleteNotification);
+
+module.exports = router;
+
+--- routes\reportRoutes.js ---
+// routes/reportRoutes.js
+const express = require('express');
+const router = express.Router();
+const Report = require('../models/Report'); // Assuming you have a Report model
+const { authenticate } = require('../middlewares/auth');
+
+router.post('/', authenticate, async (req, res) => {
+  try {
+    const { reporterId, creatorId, contentId, contentType, reportDetails, timestamp } = req.body;
+
+    const newReport = new Report({
+      reporterId,
+      creatorId,
+      contentId,
+      contentType,
+      reportDetails,
+      timestamp,
+    });
+
+    await newReport.save();
+    res.status(201).json({ message: 'Report submitted successfully' });
+  } catch (error) {
+    console.error('Error submitting report:', error);
+    res.status(500).json({ error: 'Failed to submit report' });
+  }
+});
+
+module.exports = router;
+
 --- routes\reviewRoutes.js ---
 const express = require('express');
 const router = express.Router();
@@ -1555,57 +1710,72 @@ passport.use(
 --- utils\socketHandlers.js ---
 // utils/socketHandlers.js
 const jwt = require('jsonwebtoken');
-const { getIO } = require('./socketIOInstance');
+const Notification = require('../models/Notification');
 
-// We can store connected users by userId -> socketId if needed
+// Store online users for notifications
 let onlineUsers = {}; // { userId: socketId }
 
 function setupSocketIO(io) {
-    // Middleware to verify JWT on connection
-    io.use((socket, next) => {
-      const token = socket.handshake.auth?.token;
-      if (!token) return next(new Error('No token provided'));
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
-        socket.userId = decoded.userId;
-        return next();
-      } catch (err) {
-        return next(new Error('Invalid token'));
+  // Middleware to verify JWT on connection
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('No token provided'));
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+      socket.userId = decoded.userId;
+      return next();
+    } catch (err) {
+      return next(new Error('Invalid token'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    console.log('A user connected:', socket.userId);
+
+    // Store the socket for the connected user
+    onlineUsers[socket.userId] = socket.id;
+
+    // Join the user's room for real-time notifications
+    socket.join(socket.userId);
+
+    // --- Existing Chat Functionality ---
+    socket.on('joinConversation', (conversationId) => {
+      // The user joins a specific conversation room
+      socket.join(conversationId);
+    });
+
+    // Listen for typing indicator
+    socket.on('typing', ({ conversationId }) => {
+      socket.to(conversationId).emit('typing', {
+        userId: socket.userId,
+        conversationId,
+      });
+    });
+
+    // Listen for new message
+    socket.on('newMessage', (messageData) => {
+      // Broadcast to all other users in the room
+      socket.to(messageData.conversationId).emit('newMessage', messageData);
+    });
+
+    // --- New Notification Functionality ---
+    socket.on('newNotification', (notification) => {
+      // Emit the notification to the recipient
+      const recipientSocketId = onlineUsers[notification.user_id];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit('newNotification', notification);
       }
     });
-  
-    io.on('connection', (socket) => {
-      // Store the socket for the connected user
-      onlineUsers[socket.userId] = socket.id;
-  
-      socket.on('joinConversation', (conversationId) => {
-        // The user joins a specific conversation room
-        socket.join(conversationId);
-      });
-  
-      // Listen for typing indicator
-      socket.on('typing', ({ conversationId }) => {
-        socket.to(conversationId).emit('typing', {
-          userId: socket.userId,
-          conversationId,
-        });
-      });
-  
-      // Listen for new message
-      socket.on('newMessage', (messageData) => {
-        // Broadcast to all other users in the room
-        socket.to(messageData.conversationId).emit('newMessage', messageData);
-      });
-  
-      socket.on('disconnect', () => {
-        // Cleanup
-        delete onlineUsers[socket.userId];
-      });
-    });
-  }
-  
-  module.exports = { setupSocketIO };
 
+    // Cleanup on disconnect
+    socket.on('disconnect', () => {
+      console.log('User disconnected:', socket.userId);
+      delete onlineUsers[socket.userId];
+    });
+  });
+}
+
+module.exports = { setupSocketIO };
 
 --- utils\socketIOInstance.js ---
 // utils/socketIOInstance.js
@@ -1668,6 +1838,8 @@ const bidRoutes = require('./routes/bidRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Initialize Express app
 const app = express();
@@ -1747,6 +1919,8 @@ app.use('/api/bids', bidRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

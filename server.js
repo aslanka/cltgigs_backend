@@ -20,6 +20,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Initialize Express app
 const app = express();
@@ -100,6 +101,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

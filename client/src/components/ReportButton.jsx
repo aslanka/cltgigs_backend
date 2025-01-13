@@ -19,7 +19,7 @@ const ReportButton = ({ contentId, contentType, creatorId }) => {
       };
 
       // Send the report to the backend
-      await axios.post('/api/reports', reportData);
+      await axios.post('/reports', reportData);
 
       // Close the modal and reset the form
       setIsModalOpen(false);

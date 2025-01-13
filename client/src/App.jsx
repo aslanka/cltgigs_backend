@@ -23,70 +23,73 @@ function App() {
   return (
     <div className="bg-gray-100">
       <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+      {/* 
+        Add top padding equal to the navbar height (16 * 4px = 64px for h-16)
+        so that Routes content starts below the fixed navbar.
+      */}
+      <div className="pt-16">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-        <Route path="/gigs/:gigId" element={<GigDetails />} />
-        <Route
-          path="/gigs/:gigId/edit"
-          element={
-            <ProtectedRoute>
-              <EditGig />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/create-gig"
-          element={
-            <ProtectedRoute>
-              <CreateGig />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mygigs"
-          element={
-            <ProtectedRoute>
-              <MyGigs />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/mybids" element={<MyBids />} />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/communitycard/:userId"
-          element={
-              <CommunityCard />
-          }
-        />
-
-        <Route
-          path="/messages"
-          element={
-            <ProtectedRoute>
-              <Messages />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/profile/:userId" element={<CommunityCard />} />
-      </Routes>
+          <Route path="/gigs/:gigId" element={<GigDetails />} />
+          <Route
+            path="/gigs/:gigId/edit"
+            element={
+              <ProtectedRoute>
+                <EditGig />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-gig"
+            element={
+              <ProtectedRoute>
+                <CreateGig />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mygigs"
+            element={
+              <ProtectedRoute>
+                <MyGigs />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/mybids" element={<MyBids />} />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/communitycard/:userId"
+            element={<CommunityCard />}
+          />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/profile/:userId" element={<CommunityCard />} />
+        </Routes>
+      </div>
     </div>
   );
 }
