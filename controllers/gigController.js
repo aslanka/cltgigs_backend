@@ -67,7 +67,7 @@ exports.getAllGigs = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     let query = Gig.find(filter)
-      .populate('user_id', 'name')
+      .populate('user_id', 'name profile_pic_url') // Include profilePicUrl here
       .skip(skip)
       .limit(limitNum);
 
@@ -99,6 +99,7 @@ exports.getAllGigs = async (req, res) => {
       if (distanceMap[gig.zipcode]) {
         gigObj.distance = distanceMap[gig.zipcode];
       }
+      console.log('Gig user data:', gigObj.user_id);
       return gigObj;
     });
 

@@ -227,61 +227,63 @@ const Home = () => {
           {isLoading 
             ? Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
             : gigs.map((gig) => (
-                <div key={gig._id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden">
-                  {/* Image Section */}
-                  {gig.attachment ? (
-                    <img
-                      loading="lazy"
-                      crossOrigin="anonymous"
-                      src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`} 
-                      alt={gig.title}
-                      className="w-full h-48 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500">
-                      No Image
-                    </div>
-                  )}
+              <div key={gig._id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden">
+  {/* Image Section */}
+  {gig.attachment ? (
+    <img
+      loading="lazy"
+      crossOrigin="anonymous"
+      src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`} 
+      alt={gig.title}
+      className="w-full h-48 object-cover"
+    />
+  ) : (
+    <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500">
+      No Image
+    </div>
+  )}
 
-                  {/* Content Section */}
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <ProfilePicture
-                        profilePicUrl={gig.user_id?.profilePicUrl}
-                        name={gig.user_id?.name || 'Unknown'}
-                        size="10"
-                        className="flex-shrink-0"
-                      />
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-800">{gig.title}</h2>
-                        <p className="text-sm text-gray-500">{gig.user_id?.name}</p>
-                      </div>
-                    </div>
+  {/* Content Section */}
+  <div className="p-4 space-y-3">
+    <div className="flex items-center space-x-3">
+      {console.log('Gig user data:', gig.user_id)} {/* Debugging */}
+      <ProfilePicture
+        profilePicUrl={gig.user_id?.profilePicUrl}
+        profile_pic_url={gig.user_id?.profile_pic_url} // Pass profile_pic_url here
+        name={gig.user_id?.name || 'Unknown'}
+        size="10"
+        className="flex-shrink-0"
+      />
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800">{gig.title}</h2>
+        <p className="text-sm text-gray-500">{gig.user_id?.name}</p>
+      </div>
+    </div>
 
-                    <p className="text-gray-700 text-sm line-clamp-3">{gig.description}</p>
+    <p className="text-gray-700 text-sm line-clamp-3">{gig.description}</p>
 
-                    <div className="flex justify-between items-center text-gray-800 text-sm font-medium">
-                      <span>${gig.price}</span>
-                      {gig.distance !== undefined && (
-                        <span>{gig.distance.toFixed(1)} miles away</span>
-                      )}
-                    </div>
+    <div className="flex justify-between items-center text-gray-800 text-sm font-medium">
+      <span>${gig.price}</span>
+      {gig.distance !== undefined && (
+        <span>{gig.distance.toFixed(1)} miles away</span>
+      )}
+    </div>
 
-                    <div className="flex justify-between items-center text-gray-600 text-xs">
-                      <span>ZIP: {gig.zipcode}</span>
-                      {gig.bidCount !== undefined && (
-                        <span>{gig.bidCount} bids</span>
-                      )}
-                    </div>
+    <div className="flex justify-between items-center text-gray-600 text-xs">
+      <span>ZIP: {gig.zipcode}</span>
+      {gig.bidCount !== undefined && (
+        <span>{gig.bidCount} bids</span>
+      )}
+    </div>
 
-                    <Link
-                      to={`/gigs/${gig._id}`}
-                      className="block text-center mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      View Details
-                    </Link>
-                  </div>
-                </div>
+    <Link
+      to={`/gigs/${gig._id}`}
+      className="block text-center mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      View Details
+    </Link>
+  </div>
+</div>
             ))
           }
         </div>
