@@ -5,6 +5,8 @@ import axios from '../api/axiosInstance';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, MapPin, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import ProfilePicture from '../components/ProfilePicture';
+import { cn } from "@/lib/utils";
+import { DotPattern } from "@/components/ui/dot-pattern";
 
 console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
 
@@ -84,111 +86,113 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-bold text-blue-600 text-center">CharlotteGigs</h1>
-          <p className="text-center text-gray-600 mt-2">
-            Your local marketplace for in-person services in Charlotte
-          </p>
-          
-          {/* Location and Search */}
-          <div className="mt-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <div className="relative flex items-center">
-                <MapPin className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Enter Zip Code"
-                  className="pl-10 pr-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={zipCode}
-                  onChange={(e) => setZipCode(e.target.value)}
-                />
-                <button
-                  onClick={handleZipSearch}
-                  className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Go
-                </button>
-              </div>
-              <select
-                className="px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={distance}
-                onChange={(e) => setDistance(e.target.value)}
-              >
-                <option value="10">Within 10 miles</option>
-                <option value="25">Within 25 miles</option>
-                <option value="50">Within 50 miles</option>
-                <option value="100">Within 100 miles</option>
-                <option value="250">Within 250 miles</option>
-              </select>
-            </div>
-            
-            <div className="relative max-w-2xl mx-auto">
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search for gigs..."
-                className="w-full pl-10 pr-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
-          </div>
+<div className="relative bg-white overflow-hidden">
+  {/* Dot Pattern Background */}
+  <DotPattern
+  className="absolute inset-0 z-0"
+  width={12} // Smaller spacing between dots
+  height={12}
+  cx={1.5} // Fine-tuned circle placement
+  cy={1.5}
+  cr={1} // Smaller dot size
+/>
 
-          {/* Toggle Filters on Mobile */}
-          <div className="flex justify-end mt-4 sm:hidden">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center px-4 py-2 bg-gray-200 rounded-full text-gray-700 hover:bg-gray-300 focus:outline-none"
-            >
-              <Filter className="h-5 w-5 mr-2" /> Filters
-            </button>
-          </div>
 
-          {/* Filters Section */}
-          <div className={`${showFilters ? 'block' : 'hidden'} sm:block mt-6`}>
-            {/* Categories */}
-            <div className="overflow-x-auto">
-              <div className="flex space-x-2 pb-2">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setCategory(cat);
-                      setPage(1);
-                    }}
-                    className={`px-4 py-2 whitespace-no-wrap rounded-full text-sm font-medium transition-colors
-                      ${category === cat 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
+  <div className="relative z-10 bg-white bg-opacity-90 backdrop-blur-sm shadow-sm border-b">
+    <div className="max-w-2xl mx-auto px-4 py-6 sm:py-8 text-center">
+      <h1 className="text-3xl sm:text-4xl font-bold text-blue-600">
+        CharlotteGigs
+      </h1>
+      <p className="text-gray-600 mt-2 max-w-md mx-auto">
+        Your local marketplace for in-person services in Charlotte
+      </p>
+    </div>
 
-            {/* Advanced Filters Toggle */}
-            <div className="mt-4">
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center text-blue-600 hover:underline focus:outline-none"
-              >
-                {showAdvanced ? 'Hide' : 'Show'} Advanced Filters
-              </button>
-              {showAdvanced && (
-                <div className="mt-2 space-y-4">
-                  {/* Add advanced filters here */}
-                  <p className="text-sm text-gray-600">Advanced filter options...</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+    <div className="px-4 py-4 sm:py-6 space-y-4 max-w-2xl mx-auto">
+      {/* Search Input */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search for gigs..."
+          className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
+        />
       </div>
+
+      {/* Location and Distance Filters */}
+      <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+        <div className="flex-1 relative">
+          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Enter Zip Code"
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={zipCode}
+            onChange={(e) => setZipCode(e.target.value)}
+          />
+        </div>
+        <select
+          className="bg-gray-50 rounded-xl border-0 py-3 pl-4 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={distance}
+          onChange={(e) => setDistance(e.target.value)}
+        >
+          <option value="10">10mi</option>
+          <option value="25">25mi</option>
+          <option value="50">50mi</option>
+          <option value="100">100mi</option>
+          <option value="250">250mi</option>
+        </select>
+        <button
+          onClick={handleZipSearch}
+          className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Go
+        </button>
+      </div>
+    </div>
+
+    {/* Toggle Filters on Mobile */}
+    <div className="flex justify-end px-4 sm:hidden pb-4">
+      <button
+        onClick={() => setShowFilters(!showFilters)}
+        className="flex items-center px-4 py-2 bg-gray-200 rounded-full text-gray-700 hover:bg-gray-300 focus:outline-none"
+      >
+        <Filter className="h-5 w-5 mr-2" /> Filters
+      </button>
+    </div>
+
+    {/* Filters Section */}
+    <div className={`${showFilters ? 'block' : 'hidden'} sm:block mt-6 px-4 pb-6`}>
+      {/* Categories */}
+<div className="overflow-x-auto">
+  <div className="flex justify-center space-x-2 pb-2">
+    {categories.map((cat) => (
+      <button
+        key={cat}
+        onClick={() => {
+          setCategory(cat);
+          setPage(1);
+        }}
+        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors
+          ${category === cat 
+            ? 'bg-blue-600 text-white' 
+            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+      >
+        {cat}
+      </button>
+    ))}
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
