@@ -6,6 +6,17 @@ const { findZipcodesWithinWithDistance } = require('../services/zipcodeService')
 
 exports.getAllGigs = async (req, res) => {
   try {
+    const categoryMapping = {
+      'Music': 1,
+      'Carpentry': 2,
+      'House Work': 3,
+      'Cleaning': 4,
+      'Photography': 5,
+      'Plumbing': 6,
+      'Electrician': 7
+      // add more as needed
+    };
+
     const {
       searchTerm = '',
       category = 'All',
@@ -18,7 +29,12 @@ exports.getAllGigs = async (req, res) => {
 
     const filter = {};
     if (searchTerm) filter.$text = { $search: searchTerm };
-    if (category && category !== 'All') filter.category = category;
+    if (category && category !== 'All') {
+      const categoryId = categoryMapping[category];
+      if (categoryId !== undefined) {
+        filter.category_id = categoryId;
+      }
+    }
 
     let distanceMap = {};
     if (zipCode && distance) {
@@ -80,7 +96,6 @@ exports.getAllGigs = async (req, res) => {
     const gigsWithAttachments = gigs.map(gig => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
-      // Attach distance from precomputed map if available
       if (distanceMap[gig.zipcode]) {
         gigObj.distance = distanceMap[gig.zipcode];
       }
@@ -98,7 +113,6 @@ exports.getAllGigs = async (req, res) => {
       bidCountMap[b._id.toString()] = b.count;
     });
 
-    // Attach bid counts to each gig
     gigsWithAttachments.forEach(gig => {
       gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });

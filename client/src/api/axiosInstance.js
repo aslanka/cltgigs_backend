@@ -1,7 +1,8 @@
 import axios from 'axios';
+console.log('API Base URL:', import.meta.env.VITE_API_URL);
 
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+  baseURL: import.meta.env.VITE_API_URL || 'https://cltgigsbackend.golockedin.com/api'
 });
 
 instance.interceptors.request.use((config) => {
@@ -9,6 +10,7 @@ instance.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  console.log('Final Request URL:', config.baseURL + config.url);
   return config;
 });
 

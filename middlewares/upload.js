@@ -2,6 +2,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const fsPromises = fs.promises;
 
 // Create a disk storage to store original files temporarily
 const storage = multer.diskStorage({
@@ -40,13 +41,28 @@ const messageUpload = multer({
 // A helper function to resize images if needed
 async function resizeImage(filePath, width = 800, height = 800) {
   const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
-  await sharp(filePath)
-    .resize({ width, height, fit: 'inside' })
-    .toFile(newFilePath);
+  try {
+    await sharp(filePath)
+      .resize({ width, height, fit: 'inside' })
+      .toFile(newFilePath);
+  } catch (sharpErr) {
+    console.error('Error resizing image:', sharpErr);
+    throw sharpErr;
+  }
 
-  // Delete original file, rename new file
-  fs.unlinkSync(filePath);
-  fs.renameSync(newFilePath, filePath);
+  try {
+    if (await fsPromises.access(filePath).then(() => true).catch(() => false)) {
+      await fsPromises.unlink(filePath);
+    }
+  } catch (unlinkErr) {
+    console.error('Error deleting original file:', unlinkErr);
+  }
+
+  try {
+    await fsPromises.rename(newFilePath, filePath);
+  } catch (renameErr) {
+    console.error('Error renaming resized file:', renameErr);
+  }
 }
 
 module.exports = {

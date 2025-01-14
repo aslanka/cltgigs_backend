@@ -10,6 +10,12 @@ exports.createBid = async (req, res) => {
     const { gig_id, amount, message } = req.body;
     const userId = req.user.userId;
 
+    // Check if the user has already placed a bid on this gig
+    const existingBid = await Bid.findOne({ gig_id, user_id: userId });
+    if (existingBid) {
+      return res.status(400).json({ error: 'You have already placed a bid on this gig.' });
+    }
+
     const gig = await Gig.findById(gig_id).populate('user_id');
     if (!gig) {
       return res.status(404).json({ error: 'Gig not found' });
@@ -23,6 +29,27 @@ exports.createBid = async (req, res) => {
       message,
     });
     await newBid.save();
+
+    // Create a new conversation
+    const newConversation = new Conversation({
+      gig_id,
+      gig_owner_id: gig.user_id._id,
+      bidder_id: userId,
+      bid_id: newBid._id,
+    });
+    await newConversation.save();
+
+    // Add the conversation ID to the bid
+    newBid.conversation_id = newConversation._id;
+    await newBid.save();
+
+    // Create the initial message in the conversation
+    const initialMessage = new Message({
+      conversation_id: newConversation._id,
+      sender_id: userId,
+      content: message,
+    });
+    await initialMessage.save();
 
     // Create a notification for the gig owner
     const notification = new Notification({

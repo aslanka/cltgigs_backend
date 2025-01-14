@@ -6,7 +6,7 @@ let io;
 function init(server) {
   io = new Server(server, {
     cors: {
-      origin: 'http://localhost:5173', // Allow your frontend origin
+      origin: 'https://cltgigs.golockedin.com', // Allow your frontend origin
       methods: ['GET', 'POST'],        // Allowed HTTP methods
       credentials: true,               // Allow credentials (if needed)
     },

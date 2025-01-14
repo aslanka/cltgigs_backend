@@ -27,7 +27,7 @@ const Navbar = () => {
 
       fetchNotifications();
 
-      const socket = io('http://localhost:4000', {
+      const socket = io(import.meta.env.VITE_SERVER, {
         auth: { token },
       });
 

@@ -6,7 +6,7 @@ const ProfilePicture = ({ profilePicUrl, name, size = '10', className = '' }) =>
       {profilePicUrl ? (
         <img
           crossOrigin="anonymous"
-          src={`http://localhost:4000${profilePicUrl}`}
+          src={`${import.meta.env.VITE_SERVER}${profilePicUrl}`}
           alt="Profile"
           className={`w-${size} h-${size} rounded-full object-cover`}
         />

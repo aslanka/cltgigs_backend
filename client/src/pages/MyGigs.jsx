@@ -35,6 +35,10 @@ function MyGigs() {
 
   const handleMessage = (bid) => {
     const conversationId = bid.conversationId;
+    if (!conversationId) {
+      console.error('No conversationId found for this bid');
+      return;
+    }
     navigate(`/messages/${conversationId}`);
   };
 

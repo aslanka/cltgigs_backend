@@ -6,6 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, MapPin, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import ProfilePicture from '../components/ProfilePicture';
 
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+
+const SkeletonCard = () => (
+  <div className="animate-pulse p-4 rounded-lg bg-gray-200">
+    <div className="h-48 bg-gray-300 rounded mb-4"></div>
+    <div className="h-4 bg-gray-300 rounded w-3/4 mb-2"></div>
+    <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+  </div>
+);
+
 const Home = () => {
   const [gigs, setGigs] = useState([]);
   const [totalGigs, setTotalGigs] = useState(0);
@@ -17,7 +27,9 @@ const Home = () => {
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const limit = 20;
+  const [isLoading, setIsLoading] = useState(false);
+
+  const limit = 10;
   const { token } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -32,6 +44,7 @@ const Home = () => {
   }, [searchTerm, category, sortBy, page]);
 
   const fetchGigs = async () => {
+    setIsLoading(true);
     try {
       const params = { 
         searchTerm, 
@@ -49,6 +62,7 @@ const Home = () => {
     } catch (err) {
       console.error(err);
     }
+    setIsLoading(false);
   };
 
   const handleZipSearch = () => {
@@ -206,53 +220,66 @@ const Home = () => {
 
         {/* Gigs Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {gigs.map((gig) => (
-            <Card key={gig._id} className="hover:shadow-xl transition-shadow p-4 rounded-lg">
-              <CardHeader className="flex items-center space-x-3">
-                <ProfilePicture
-                  profilePicUrl={gig.user_id?.profilePicUrl}
-                  name={gig.user_id?.name || 'Unknown'}
-                  size="12"
-                  className="flex-shrink-0"
-                />
-                <CardTitle className="text-lg font-semibold">{gig.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-2">
-                {gig.attachment && (
-                  <img
-                    loading="lazy"
-                    crossOrigin='anonymous'
-                    src={`http://localhost:4000/${gig.attachment.file_url}`} 
-                    alt={gig.title}
-                    className="w-full h-48 object-cover mb-4 rounded"
-                  />
-                )}
-                <p className="text-gray-700 mb-4 text-base line-clamp-3">{gig.description}</p>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-blue-600 font-bold text-xl">${gig.price}</span>
-                  {gig.distance !== undefined && (
-                    <span className="text-gray-500 text-sm">
-                      {gig.distance.toFixed(1)} miles
-                    </span>
+          {isLoading 
+            ? Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
+            : gigs.map((gig) => (
+                <div key={gig._id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden">
+                  {/* Image Section */}
+                  {gig.attachment ? (
+                    <img
+                      loading="lazy"
+                      crossOrigin="anonymous"
+                      src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`} 
+                      alt={gig.title}
+                      className="w-full h-48 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500">
+                      No Image
+                    </div>
                   )}
-                </div>
-                <div className="text-sm text-gray-500 mb-1">
-                  ZIP: {gig.zipcode}
-                </div>
-                {gig.bidCount !== undefined && (
-                  <div className="text-sm text-gray-500 mb-1">
-                    Bids: {gig.bidCount}
+
+                  {/* Content Section */}
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <ProfilePicture
+                        profilePicUrl={gig.user_id?.profilePicUrl}
+                        name={gig.user_id?.name || 'Unknown'}
+                        size="10"
+                        className="flex-shrink-0"
+                      />
+                      <div>
+                        <h2 className="text-lg font-semibold text-gray-800">{gig.title}</h2>
+                        <p className="text-sm text-gray-500">{gig.user_id?.name}</p>
+                      </div>
+                    </div>
+
+                    <p className="text-gray-700 text-sm line-clamp-3">{gig.description}</p>
+
+                    <div className="flex justify-between items-center text-gray-800 text-sm font-medium">
+                      <span>${gig.price}</span>
+                      {gig.distance !== undefined && (
+                        <span>{gig.distance.toFixed(1)} miles away</span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center text-gray-600 text-xs">
+                      <span>ZIP: {gig.zipcode}</span>
+                      {gig.bidCount !== undefined && (
+                        <span>{gig.bidCount} bids</span>
+                      )}
+                    </div>
+
+                    <Link
+                      to={`/gigs/${gig._id}`}
+                      className="block text-center mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      View Details
+                    </Link>
                   </div>
-                )}
-                <Link
-                  to={`/gigs/${gig._id}`}
-                  className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700 transition-colors w-full"
-                >
-                  View Details
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
+                </div>
+            ))
+          }
         </div>
 
         {/* Pagination Controls */}

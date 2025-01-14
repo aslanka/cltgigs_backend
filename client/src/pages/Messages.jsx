@@ -18,17 +18,18 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [attachment, setAttachment] = useState(null);
-  const [isUploading, setIsUploading] = useState(false); // Upload indicator state
+  const [isUploading, setIsUploading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showNewChatButton, setShowNewChatButton] = useState(false);
 
   const socketRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
-  // 1. Connect to Socket.io
   useEffect(() => {
     if (!token) return;
-    socketRef.current = io('http://localhost:4000', {
+    socketRef.current = io(import.meta.env.VITE_SERVER, {
       auth: { token },
     });
 
@@ -36,7 +37,6 @@ export default function Messages() {
       console.error('Socket connect error:', err.message);
     });
 
-    // Real-time typing indicator
     socketRef.current.on('typing', ({ userId: typingId }) => {
       if (typingId !== userId) {
         setTypingUser(typingId);
@@ -45,14 +45,12 @@ export default function Messages() {
       }
     });
 
-    // Real-time newMessage
     socketRef.current.on('newMessage', (msgData) => {
       if (msgData.conversation_id === activeConversation?._id) {
         setMessages((prev) => [...prev, msgData]);
       }
     });
 
-    // Real-time deletion
     socketRef.current.on('messageDeleted', ({ messageId }) => {
       setMessages((prev) => prev.filter((m) => m._id !== messageId));
     });
@@ -62,20 +60,17 @@ export default function Messages() {
     };
   }, [token, userId, activeConversation]);
 
-  // 2. Fetch user conversations
   useEffect(() => {
     if (!token) return;
     axios
       .get('/messages')
       .then((res) => {
-        // Filter out conversations where the gig doesn't exist or is unavailable
         const validConversations = res.data.filter((conv) => conv.gigTitle && conv.gigTitle.trim() !== '');
         setConversations(validConversations);
       })
       .catch((err) => console.error('Error fetching conversations:', err));
   }, [token]);
 
-  // 3. If there's a conversationId param, pre-select it
   useEffect(() => {
     if (!urlConversationId || !conversations.length) return;
     const found = conversations.find(
@@ -84,7 +79,6 @@ export default function Messages() {
     if (found) handleSelectConversation(found);
   }, [urlConversationId, conversations]);
 
-  // 4. Load messages when a conversation is active
   useEffect(() => {
     if (!activeConversation) {
       setMessages([]);
@@ -98,21 +92,40 @@ export default function Messages() {
       .catch((err) => console.error('Error fetching messages:', err));
   }, [activeConversation]);
 
+  useEffect(() => {
+    // Auto-scroll to bottom when messages change
+    if (messagesContainerRef.current) {
+      const { scrollHeight, clientHeight, scrollTop } = messagesContainerRef.current;
+      const isAtBottom = scrollHeight - clientHeight - scrollTop < 50;
+      if (isAtBottom) {
+        messagesContainerRef.current.scrollTop = scrollHeight;
+        setShowNewChatButton(false);
+      } else {
+        setShowNewChatButton(true);
+      }
+    }
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      setShowNewChatButton(false);
+    }
+  };
+
   const handleSelectConversation = (conv) => {
     setActiveConversation(conv);
     setNewMessage('');
     setAttachment(null);
-    navigate(`/messages/${conv._id}`); // Update the URL with the conversation ID
+    navigate(`/messages/${conv._id}`);
   };
 
-  // Sends a new message
   const handleSendMessage = async () => {
     if (!newMessage.trim() && !attachment) return;
-
     try {
       let file_url = null;
       if (attachment) {
-        setIsUploading(true); // Show upload indicator
+        setIsUploading(true);
         const formData = new FormData();
         formData.append('file', attachment);
         formData.append('type', 'message');
@@ -121,7 +134,7 @@ export default function Messages() {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         file_url = response.data.file_url;
-        setIsUploading(false); // Hide upload indicator
+        setIsUploading(false);
       }
 
       await axios.post('/messages', {
@@ -131,10 +144,10 @@ export default function Messages() {
       });
 
       setNewMessage('');
-      setAttachment(null); // Clear attachment after sending
+      setAttachment(null);
     } catch (err) {
       console.error('Error sending message:', err);
-      setIsUploading(false); // Hide upload indicator on error
+      setIsUploading(false);
     }
   };
 
@@ -142,7 +155,6 @@ export default function Messages() {
     setAttachment(null);
   };
 
-  // Delete message
   const handleDeleteMessage = async (msgId) => {
     try {
       await axios.delete(`/messages/${msgId}`);
@@ -152,7 +164,6 @@ export default function Messages() {
     }
   };
 
-  // Report message
   const handleReportMessage = async (msgId) => {
     try {
       await axios.post(`/messages/${msgId}/report`);
@@ -162,7 +173,6 @@ export default function Messages() {
     }
   };
 
-  // Block conversation
   const handleBlockConversation = async () => {
     try {
       await axios.post(`/messages/${activeConversation._id}/block`);
@@ -173,7 +183,6 @@ export default function Messages() {
     }
   };
 
-  // Unblock conversation
   const handleUnblockConversation = async () => {
     try {
       await axios.post(`/messages/${activeConversation._id}/unblock`);
@@ -184,21 +193,18 @@ export default function Messages() {
     }
   };
 
-  // View Gig
   const handleViewGig = () => {
     if (activeConversation?.gigId) {
       navigate(`/gig/${activeConversation.gigId}`);
     }
   };
 
-  // View Profile
   const handleViewProfile = () => {
     if (activeConversation?.otherUserId) {
-      navigate(`/profile/${activeConversation.otherUserId}`);
+      navigate(`/communitycard/${activeConversation.otherUserId}`);
     }
   };
 
-  // Typing indicator
   const handleTyping = () => {
     if (!activeConversation) return;
     socketRef.current.emit('typing', {
@@ -206,264 +212,243 @@ export default function Messages() {
     });
   };
 
-  // Filter conversations by search term
   const filteredConversations = conversations.filter((c) =>
     (c.otherUserName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Main Content */}
-      <div className="container mx-auto p-4">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="flex flex-col md:flex-row h-[calc(100vh-8rem)]">
-            {/* Conversations List */}
-            <div className="w-full md:w-1/3 border-r border-gray-200">
-              <div className="p-4 border-b border-gray-200">
-                <input
-                  type="text"
-                  placeholder="Search messages..."
-                  className="w-full p-2 border rounded-lg"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+    <div className="min-h-screen bg-white flex flex-col overflow-hidden">
+      {/* Header for Mobile */}
+      <header className="md:hidden bg-white shadow p-4 flex items-center">
+        {activeConversation && (
+          <button onClick={() => setActiveConversation(null)} className="mr-4">
+            ←
+          </button>
+        )}
+        <h1 className="text-lg font-semibold">
+          {activeConversation ? activeConversation.otherUserName : 'Messages'}
+        </h1>
+      </header>
+
+      <div className="flex-1 container mx-auto p-0 md:p-4 flex flex-col md:flex-row bg-white">
+        {/* Conversations List */}
+        <aside className={`md:w-1/3 border-r border-gray-200 ${activeConversation ? 'hidden md:block' : 'block'}`}>
+          <div className="p-4 border-b border-gray-200">
+            <input
+              type="text"
+              placeholder="Search messages..."
+              className="w-full p-2 border rounded-lg"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="overflow-y-auto h-[calc(100vh-8rem)]">
+            {filteredConversations.map((conv) => {
+              const activeClass = conv._id === activeConversation?._id ? 'bg-blue-50' : '';
+              return (
+                <div
+                  key={conv._id}
+                  onClick={() => handleSelectConversation(conv)}
+                  className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${activeClass}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-semibold">{conv.otherUserName}</h3>
+                      {conv.online && (
+                        <span className="bg-green-500 rounded-full w-2 h-2"></span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {moment(conv.lastMessageTime).fromNow()}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    {conv.gigTitle}
+                  </div>
+                  <p className="text-sm text-gray-500 truncate mt-1">
+                    {conv.lastMessage}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Message Area */}
+        <main className="flex-1 flex flex-col">
+          {activeConversation && (
+            <>
+              {/* Profile Header for Desktop */}
+              <div
+                className="hidden md:flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer"
+                onClick={handleViewProfile}
+              >
+                <div className="flex items-start space-x-4">
+                  <ProfilePicture
+                    profilePicUrl={activeConversation.otherUserPic}
+                    name={activeConversation.otherUserName}
+                    size="10"
+                  />
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-xl font-bold">
+                        {activeConversation.otherUserName}
+                      </h2>
+                      <span className="bg-green-500 rounded-full w-2 h-2"></span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="flex text-yellow-400">
+                        ★★★★<span className="text-gray-300">★</span>
+                      </div>
+                      <span className="text-sm text-gray-600">
+                        (4.2 • 48 reviews)
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Member since 2023 • 89 gigs completed
+                    </p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  {activeConversation.isBlocked ? (
+                    <button onClick={handleUnblockConversation} title="Unblock Conversation">
+                      {/* Example icon - replace with actual icon */}
+                      🚫
+                    </button>
+                  ) : (
+                    <button onClick={handleBlockConversation} title="Block Conversation">
+                      {/* Example icon - replace with actual icon */}
+                      ❌
+                    </button>
+                  )}
+                  <button onClick={handleViewGig} title="View Gig">
+                    {/* Example icon - replace with actual icon */}
+                    🔍
+                  </button>
+                </div>
               </div>
-              <div className="overflow-y-auto h-full">
-                {filteredConversations.map((conv) => {
-                  const activeClass =
-                    conv._id === activeConversation?._id ? 'bg-blue-50' : '';
+
+              {/* Chat Messages */}
+              <div
+                ref={messagesContainerRef}
+                className={`flex-1 overflow-y-auto p-4 ${activeConversation.isBlocked ? 'opacity-50' : ''}`}
+                style={{ maxHeight: 'calc(100vh - 200px)' }}
+              >
+                {messages.map((msg) => {
+                  const isSelf = msg.sender_id === userId;
                   return (
                     <div
-                      key={conv._id}
-                      onClick={() => handleSelectConversation(conv)}
-                      className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${activeClass}`}
+                      key={msg._id}
+                      className={`mb-4 flex ${isSelf ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold">{conv.otherUserName}</h3>
-                          {conv.online && (
-                            <span className="bg-green-500 rounded-full w-2 h-2"></span>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          {moment(conv.lastMessageTime).fromNow()}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        {conv.gigTitle}
-                      </div>
-                      <p className="text-sm text-gray-500 truncate mt-1">
-                        {conv.lastMessage}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Message Area */}
-            <div className="w-full md:w-2/3 flex flex-col">
-              {/* User Profile Header */}
-              {activeConversation && (
-                <>
-                  <div className="p-4 border-b border-gray-200">
-                    <div className="flex justify-between items-start">
-                      <div
-                        className="flex items-start space-x-4 cursor-pointer"
-                        onClick={handleViewProfile}
-                      >
-                        <ProfilePicture
-                          profilePicUrl={activeConversation.otherUserPic}
-                          name={activeConversation.otherUserName}
-                          size="10"
-                        />
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <h2 className="text-xl font-bold">
-                              {activeConversation.otherUserName}
-                            </h2>
-                            <span className="bg-green-500 rounded-full w-2 h-2"></span>
+                      <div className="max-w-[80%] md:max-w-lg">
+                        {!isSelf && (
+                          <div className="text-xs text-gray-500 mb-1">
+                            Re: {activeConversation.gigTitle}
                           </div>
-                          <div className="flex items-center space-x-1">
-                            <div className="flex text-yellow-400">
-                              ★★★★<span className="text-gray-300">★</span>
-                            </div>
-                            <span className="text-sm text-gray-600">
-                              (4.2 • 48 reviews)
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600">
-                            Member since 2023 • 89 gigs completed
+                        )}
+                        <div className={`${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'} rounded-lg px-4 py-2`}>
+                          <p className="text-sm break-words">{msg.content}</p>
+                          <Attachment fileUrl={msg.file_url} />
+                          <p className={`text-xs mt-1 ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
+                            {moment(msg.created_at).format('LT')}
                           </p>
                         </div>
                       </div>
-                      <div className="flex space-x-2">
-                        {activeConversation.isBlocked ? (
-                          <button
-                            onClick={handleUnblockConversation}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                          >
-                            Unblock Conversation
-                          </button>
-                        ) : (
-                          <button
-                            onClick={handleBlockConversation}
-                            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-                          >
-                            Block Conversation
-                          </button>
-                        )}
-                        <button
-                          onClick={handleViewGig}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                        >
-                          View Gig
-                        </button>
-                      </div>
                     </div>
+                  );
+                })}
+                {isTyping && typingUser && typingUser !== userId && (
+                  <div className="text-sm text-gray-500 mt-2">
+                    {`User ${typingUser} is typing...`}
                   </div>
+                )}
+              </div>
 
-                  {/* Messages Area */}
-                  <div
-                    className={`flex-1 overflow-y-auto p-4 ${
-                      activeConversation.isBlocked ? 'opacity-50' : ''
-                    }`}
-                  >
-                    {messages.map((msg) => {
-                      const isSelf = msg.sender_id === userId;
-                      return (
-                        <div
-                          key={msg._id}
-                          className={`mb-4 ${
-                            isSelf ? 'flex justify-end' : 'flex justify-start'
-                          }`}
-                        >
-                          <div className="max-w-lg">
-                            {!isSelf && (
-                              <div className="text-xs text-gray-500 mb-1">
-                                Re: {activeConversation.gigTitle}
-                              </div>
-                            )}
-                            <div
-                              className={`${
-                                isSelf
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-200'
-                              } rounded-lg px-4 py-2`}
-                            >
-                              <p
-                                className={`text-sm ${
-                                  isSelf ? 'text-white' : 'text-gray-900'
-                                }`}
-                              >
-                                {msg.content}
-                              </p>
-                              <Attachment fileUrl={msg.file_url} />
-                              <p
-                                className={`text-xs ${
-                                  isSelf ? 'text-blue-200' : 'text-gray-500'
-                                } mt-1`}
-                              >
-                                {moment(msg.created_at).format('LT')}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {isTyping && typingUser && typingUser !== userId && (
-                      <div className="text-sm text-gray-500 mt-2">
-                        {`User ${typingUser} is typing...`}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Message Input */}
-                  <div
-                    className={`p-4 border-t border-gray-200 ${
-                      activeConversation.isBlocked ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <div className="flex flex-col space-y-2">
-                      {/* Attachment Indicator */}
-                      {attachment && (
-                        <div className="relative p-2 bg-gray-100 rounded-lg">
-                          <img
-                            src={URL.createObjectURL(attachment)}
-                            alt="Attachment"
-                            className="max-w-full h-32 object-cover rounded-lg"
-                          />
-                          <button
-                            onClick={handleRemoveAttachment}
-                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Upload Indicator */}
-                      {isUploading && (
-                        <div className="flex items-center justify-center p-2 bg-gray-100 rounded-lg">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                          <span className="ml-2 text-sm text-gray-600">
-                            Uploading...
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex space-x-2">
-                        <input
-                          type="text"
-                          placeholder="Type your message..."
-                          className="flex-1 p-2 border rounded-lg"
-                          value={newMessage}
-                          onChange={(e) => {
-                            setNewMessage(e.target.value);
-                            handleTyping();
-                          }}
-                          disabled={activeConversation.isBlocked}
-                        />
-                        <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer">
-                          📎
-                          <input
-                            type="file"
-                            className="hidden"
-                            onChange={(e) => {
-                              if (e.target.files[0])
-                                setAttachment(e.target.files[0]);
-                            }}
-                            disabled={activeConversation.isBlocked}
-                          />
-                        </label>
-                        <button
-                          onClick={handleSendMessage}
-                          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-                          disabled={activeConversation.isBlocked || isUploading}
-                        >
-                          Send
-                        </button>
-                      </div>
-                      <div className="flex items-center text-sm text-gray-500">
-                        <p>
-                          Drag & drop files or click the attachment button. Max
-                          size: 25MB
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </>
+              {/* New Chat Popup Button */}
+              {showNewChatButton && (
+                <button
+                  onClick={scrollToBottom}
+                  className="fixed bottom-20 right-4 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg"
+                >
+                  New Chat
+                </button>
               )}
 
-              {/* No Conversation Selected */}
-              {!activeConversation && (
-                <div className="flex-1 flex items-center justify-center text-gray-400">
-                  Select a conversation
+              {/* Message Input */}
+              <div className={`p-4 border-t border-gray-200 ${activeConversation.isBlocked ? 'opacity-50' : ''} bg-white md:static fixed bottom-0 left-0 right-0`}>
+                <div className="flex flex-col space-y-2">
+                  {attachment && (
+                    <div className="relative p-2 bg-gray-100 rounded-lg">
+                      <img
+                        src={URL.createObjectURL(attachment)}
+                        alt="Attachment"
+                        className="max-w-full h-32 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={handleRemoveAttachment}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+
+                  {isUploading && (
+                    <div className="flex items-center justify-center p-2 bg-gray-100 rounded-lg">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="ml-2 text-sm text-gray-600">
+                        Uploading...
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      placeholder="Type your message..."
+                      className="flex-1 p-2 border rounded-lg"
+                      value={newMessage}
+                      onChange={(e) => {
+                        setNewMessage(e.target.value);
+                        handleTyping();
+                      }}
+                      disabled={activeConversation.isBlocked}
+                    />
+                    <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer flex items-center justify-center min-w-[48px] min-h-[48px]">
+                      📎
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files[0]) setAttachment(e.target.files[0]);
+                        }}
+                        disabled={activeConversation.isBlocked}
+                      />
+                    </label>
+                    <button
+                      onClick={handleSendMessage}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center min-w-[48px] min-h-[48px]"
+                      disabled={activeConversation.isBlocked || isUploading}
+                    >
+                      Send
+                    </button>
+                  </div>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <p>
+                      Drag & drop files or click the attachment button. Max size: 25MB
+                    </p>
+                  </div>
                 </div>
-              )}
+              </div>
+            </>
+          )}
+          {!activeConversation && (
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+              Select a conversation
             </div>
-          </div>
-        </div>
+          )}
+        </main>
       </div>
     </div>
   );

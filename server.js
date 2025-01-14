@@ -24,6 +24,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 
 // Initialize Express app
 const app = express();
+app.set('trust proxy', 1);
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -38,7 +39,7 @@ setupSocketIO(io);
 app.set('io', io);
 
 // CORS configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000']; // Add other origins if needed
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -47,7 +48,7 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 };
 
@@ -60,7 +61,7 @@ app.use(express.json());
 // Rate Limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 200, // Limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
@@ -69,7 +70,7 @@ app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/');
   res.header('Access-Control-Allow-Methods', 'GET');
   next();
 });

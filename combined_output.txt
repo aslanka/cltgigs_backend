@@ -131,6 +131,12 @@ exports.createBid = async (req, res) => {
     const { gig_id, amount, message } = req.body;
     const userId = req.user.userId;
 
+    // Check if the user has already placed a bid on this gig
+    const existingBid = await Bid.findOne({ gig_id, user_id: userId });
+    if (existingBid) {
+      return res.status(400).json({ error: 'You have already placed a bid on this gig.' });
+    }
+
     const gig = await Gig.findById(gig_id).populate('user_id');
     if (!gig) {
       return res.status(404).json({ error: 'Gig not found' });
@@ -144,6 +150,27 @@ exports.createBid = async (req, res) => {
       message,
     });
     await newBid.save();
+
+    // Create a new conversation
+    const newConversation = new Conversation({
+      gig_id,
+      gig_owner_id: gig.user_id._id,
+      bidder_id: userId,
+      bid_id: newBid._id,
+    });
+    await newConversation.save();
+
+    // Add the conversation ID to the bid
+    newBid.conversation_id = newConversation._id;
+    await newBid.save();
+
+    // Create the initial message in the conversation
+    const initialMessage = new Message({
+      conversation_id: newConversation._id,
+      sender_id: userId,
+      content: message,
+    });
+    await initialMessage.save();
 
     // Create a notification for the gig owner
     const notification = new Notification({
@@ -1792,7 +1819,7 @@ let io;
 function init(server) {
   io = new Server(server, {
     cors: {
-      origin: 'http://localhost:5173', // Allow your frontend origin
+      origin: 'https://cltgigs.golockedin.com', // Allow your frontend origin
       methods: ['GET', 'POST'],        // Allowed HTTP methods
       credentials: true,               // Allow credentials (if needed)
     },
@@ -1849,6 +1876,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 
 // Initialize Express app
 const app = express();
+app.set('trust proxy', 1);
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -1863,7 +1891,7 @@ setupSocketIO(io);
 app.set('io', io);
 
 // CORS configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000']; // Add other origins if needed
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -1872,7 +1900,7 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 };
 
@@ -1885,7 +1913,7 @@ app.use(express.json());
 // Rate Limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 200, // Limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
@@ -1894,7 +1922,7 @@ app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/');
   res.header('Access-Control-Allow-Methods', 'GET');
   next();
 });
