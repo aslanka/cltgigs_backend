@@ -318,6 +318,17 @@ const { findZipcodesWithinWithDistance } = require('../services/zipcodeService')
 
 exports.getAllGigs = async (req, res) => {
   try {
+    const categoryMapping = {
+      'Music': 1,
+      'Carpentry': 2,
+      'House Work': 3,
+      'Cleaning': 4,
+      'Photography': 5,
+      'Plumbing': 6,
+      'Electrician': 7
+      // add more as needed
+    };
+
     const {
       searchTerm = '',
       category = 'All',
@@ -330,7 +341,12 @@ exports.getAllGigs = async (req, res) => {
 
     const filter = {};
     if (searchTerm) filter.$text = { $search: searchTerm };
-    if (category && category !== 'All') filter.category = category;
+    if (category && category !== 'All') {
+      const categoryId = categoryMapping[category];
+      if (categoryId !== undefined) {
+        filter.category_id = categoryId;
+      }
+    }
 
     let distanceMap = {};
     if (zipCode && distance) {
@@ -392,7 +408,6 @@ exports.getAllGigs = async (req, res) => {
     const gigsWithAttachments = gigs.map(gig => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
-      // Attach distance from precomputed map if available
       if (distanceMap[gig.zipcode]) {
         gigObj.distance = distanceMap[gig.zipcode];
       }
@@ -410,7 +425,6 @@ exports.getAllGigs = async (req, res) => {
       bidCountMap[b._id.toString()] = b.count;
     });
 
-    // Attach bid counts to each gig
     gigsWithAttachments.forEach(gig => {
       gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });
@@ -1081,6 +1095,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const fsPromises = fs.promises;
 
 // Create a disk storage to store original files temporarily
 const storage = multer.diskStorage({
@@ -1119,13 +1134,28 @@ const messageUpload = multer({
 // A helper function to resize images if needed
 async function resizeImage(filePath, width = 800, height = 800) {
   const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
-  await sharp(filePath)
-    .resize({ width, height, fit: 'inside' })
-    .toFile(newFilePath);
+  try {
+    await sharp(filePath)
+      .resize({ width, height, fit: 'inside' })
+      .toFile(newFilePath);
+  } catch (sharpErr) {
+    console.error('Error resizing image:', sharpErr);
+    throw sharpErr;
+  }
 
-  // Delete original file, rename new file
-  fs.unlinkSync(filePath);
-  fs.renameSync(newFilePath, filePath);
+  try {
+    if (await fsPromises.access(filePath).then(() => true).catch(() => false)) {
+      await fsPromises.unlink(filePath);
+    }
+  } catch (unlinkErr) {
+    console.error('Error deleting original file:', unlinkErr);
+  }
+
+  try {
+    await fsPromises.rename(newFilePath, filePath);
+  } catch (renameErr) {
+    console.error('Error renaming resized file:', renameErr);
+  }
 }
 
 module.exports = {
@@ -1813,13 +1843,14 @@ module.exports = { setupSocketIO };
 --- utils\socketIOInstance.js ---
 // utils/socketIOInstance.js
 const { Server } = require('socket.io');
+require('dotenv').config();
 
 let io;
 
 function init(server) {
   io = new Server(server, {
     cors: {
-      origin: 'https://cltgigs.golockedin.com', // Allow your frontend origin
+      origin: process.env.FRONTEND_ORIGIN,// Allow your frontend origin
       methods: ['GET', 'POST'],        // Allowed HTTP methods
       credentials: true,               // Allow credentials (if needed)
     },
@@ -1959,7 +1990,7 @@ app.use('/api/notifications', notificationRoutes);
 // In production, serve React build or other front-end (omitted for brevity)
 
 // Start the server
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

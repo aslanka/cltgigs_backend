@@ -34,7 +34,7 @@ function MyGigs() {
   };
 
   const handleMessage = (bid) => {
-    const conversationId = bid.conversationId;
+    const conversationId = bid.conversation_id; // Ensure this is the correct field
     if (!conversationId) {
       console.error('No conversationId found for this bid');
       return;
