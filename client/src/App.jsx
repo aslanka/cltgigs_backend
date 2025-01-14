@@ -15,6 +15,7 @@ import EditGig from './pages/EditGig';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import MyBids from './pages/MyBids';
+import SearchResults from './pages/SearchResults';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
@@ -102,6 +103,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/search" element={<SearchResults />} />
+
           <Route path="/profile/:userId" element={<CommunityCard />} />
         </Routes>
       </div>
