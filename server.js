@@ -107,7 +107,7 @@ app.use('/api/notifications', notificationRoutes);
 // In production, serve React build or other front-end (omitted for brevity)
 
 // Start the server
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
