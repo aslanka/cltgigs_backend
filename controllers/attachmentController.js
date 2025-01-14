@@ -1,5 +1,7 @@
+// controllers/attachmentController.js
 const Attachment = require('../models/Attachment');
 const fs = require('fs');
+const path = require('path');
 
 exports.uploadAttachmentGeneral = async (req, res) => {
   try {
@@ -12,10 +14,10 @@ exports.uploadAttachmentGeneral = async (req, res) => {
     const attachment = new Attachment({
       type,
       foreign_key_id,
-      file_url: req.file.path
+      file_url: `/uploads/${req.file.filename}`
     });
     await attachment.save();
-    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id });
+    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id, file_url: attachment.file_url });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
@@ -29,7 +31,6 @@ exports.getAttachment = async (req, res) => {
     if (!attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
-    // You can stream the file or return the file path
     return res.json({ attachment });
   } catch (err) {
     console.error(err);
@@ -45,11 +46,7 @@ exports.deleteAttachment = async (req, res) => {
       return res.status(404).json({ error: 'Attachment not found' });
     }
 
-    // Only allow if user is the owner (would require additional logic to map attachment to user)
-    // For simplicity, let's skip that check or assume admin privileges:
-
-    // Delete file from disk
-    fs.unlink(attachment.file_url, (err) => {
+    fs.unlink(path.join(__dirname, '..', attachment.file_url), (err) => {
       if (err) console.error(err);
     });
 

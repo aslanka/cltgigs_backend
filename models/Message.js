@@ -7,7 +7,9 @@ const messageSchema = new mongoose.Schema({
     required: true
   },
   sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String, default: '' }, 
+  content: { type: String, default: '' },
+  file_url: { type: String, default: '' }, // If there's an attachment
+  reported: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now }
 });
 

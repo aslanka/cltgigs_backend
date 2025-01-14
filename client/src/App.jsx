@@ -8,21 +8,26 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import MyGigs from './pages/MyGigs';
 import Messages from './pages/Messages';
-import PublicProfile from './pages/PublicProfile';
+import CommunityCard from './pages/CommunityCard';
 import GigDetails from './pages/GigDetails';
 import CreateGig from './pages/CreateGig';
 import EditGig from './pages/EditGig';
-import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
+import MyBids from './pages/MyBids';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    <div className="bg-gray-100 min-h-screen">
+    <div className="bg-gray-100">
       <Navbar />
-      <div className="container mx-auto p-4">
+      {/* 
+        Add top padding equal to the navbar height (16 * 4px = 64px for h-16)
+        so that Routes content starts below the fixed navbar.
+      */}
+      <div className="pt-16">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -54,10 +59,18 @@ function App() {
             }
           />
           <Route
-            path="/profile"
+            path="/mybids"
             element={
               <ProtectedRoute>
-                <Profile />
+                <MyBids />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
               </ProtectedRoute>
             }
           />
@@ -69,7 +82,10 @@ function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/communitycard/:userId"
+            element={<CommunityCard />}
+          />
           <Route
             path="/messages"
             element={
@@ -78,7 +94,15 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/profile/:userId" element={<PublicProfile />} />
+          <Route
+            path="/messages/:conversationId"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/profile/:userId" element={<CommunityCard />} />
         </Routes>
       </div>
     </div>

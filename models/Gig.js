@@ -9,5 +9,7 @@ const gigSchema = new mongoose.Schema({
   zipcode: { type: String },     // optional zipcode field
   created_at: { type: Date, default: Date.now }
 });
+// In your Gig schema (models/Gig.js)
+gigSchema.index({ zipcode: 1 });
 
 module.exports = mongoose.model('Gig', gigSchema);
