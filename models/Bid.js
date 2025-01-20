@@ -8,7 +8,12 @@ const bidSchema = new mongoose.Schema({
   accepted: { type: Boolean, default: false },
   rejected: { type: Boolean, default: false },
   conversation_id: { type: mongoose.Schema.Types.ObjectId }, // Added field
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected'],
+    default: 'pending'
+  }
 });
 
 module.exports = mongoose.model('Bid', bidSchema);

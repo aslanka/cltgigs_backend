@@ -1,20 +1,27 @@
+// routes/bidRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { createBid, getBidsForGig, acceptBid, // Ensure this is imported
-    denyBid,   // Ensure this is imported
-    getMyBids, undenyBid} = require('../controllers/bidController');
+const { 
+  createBid, 
+  getBidsForGig, 
+  acceptBid,
+  denyBid,
+  getMyBids,  // MOVE THIS ROUTE UP
+  undenyBid,
+  deleteBid,
+  updateBidStatus,
+} = require('../controllers/bidController');
 
-// Place a bid (must be logged in)
+// Correct order of routes
 router.post('/', authenticate, createBid);
-
-// Get bids for a gig (the gig owner sees all, non-owner sees only their own)
-router.get('/:gigId', authenticate, getBidsForGig);
-
+router.get('/my', authenticate, getMyBids); // This should come FIRST
+router.get('/:gigId', authenticate, getBidsForGig); // This comes AFTER
 router.post('/:bidId/accept', authenticate, acceptBid);
 router.post('/:bidId/deny', authenticate, denyBid);
-router.get('/my', authenticate, getMyBids);
 router.post('/:bidId/undeny', authenticate, undenyBid);
-
+// Add to bidRoutes.js
+router.delete('/:bidId', authenticate, deleteBid);
+router.patch('/:bidId/status', authenticate, updateBidStatus);
 
 module.exports = router;

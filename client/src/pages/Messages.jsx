@@ -1,8 +1,9 @@
+// frontend/src/pages/Messages.jsx
 import React, { useEffect, useState, useContext, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import moment from 'moment';
-import { Menu, X, Send, Paperclip, ChevronLeft, MoreVertical } from 'lucide-react';
+import { X, Send, Paperclip, ChevronLeft, MoreVertical } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import axios from '../api/axiosInstance';
 import ProfilePicture from '../components/ProfilePicture';
@@ -14,135 +15,225 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export default function Messages() {
-  const { token, userData } = useContext(AuthContext);
-  const userId = userData?.userId || null;
-  const navigate = useNavigate();
-  const { conversationId: urlConversationId } = useParams();
+// Custom hook for socket management
+const useSocket = (token, userId, activeConversation, handlers) => {
+  const socketRef = useRef(null);
 
+  useEffect(() => {
+    if (!token) return;
+
+    socketRef.current = io(import.meta.env.VITE_SERVER, {
+      auth: { token },
+      withCredentials: true,
+    });
+
+    const { onTyping, onNewMessage, onMessageDeleted } = handlers;
+    
+    socketRef.current.on('connect_error', (err) => {
+      console.error('Socket connect error:', err.message);
+    });
+
+    socketRef.current.on('typing', onTyping);
+    socketRef.current.on('newMessage', onNewMessage);
+    socketRef.current.on('messageDeleted', onMessageDeleted);
+
+    return () => {
+      socketRef.current?.off('typing', onTyping);
+      socketRef.current?.off('newMessage', onNewMessage);
+      socketRef.current?.off('messageDeleted', onMessageDeleted);
+      socketRef.current?.disconnect();
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (activeConversation?._id) {
+      socketRef.current?.emit('joinConversation', activeConversation._id);
+    }
+  }, [activeConversation]);
+
+  return socketRef;
+};
+
+// Custom hook for conversations management
+const useConversations = (token, urlConversationId, navigate) => {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchConversations = async () => {
+      try {
+        const res = await axios.get('/messages');
+        const filtered = res.data.filter(conv => conv.gigTitle?.trim());
+        setConversations(filtered);
+        
+        // Set active conversation from URL if valid
+        const initialConv = filtered.find(c => c._id === urlConversationId);
+        if (urlConversationId && initialConv) {
+          setActiveConversation(initialConv);
+        }
+      } catch (err) {
+        console.error('Error fetching conversations:', err);
+      }
+    };
+
+    fetchConversations();
+  }, [token, urlConversationId]);
+
+  const handleSelectConversation = (conv) => {
+    setActiveConversation(conv);
+    navigate(`/messages/${conv._id}`);
+  };
+
+  return {
+    conversations,
+    activeConversation,
+    searchTerm,
+    setSearchTerm,
+    handleSelectConversation,
+    setActiveConversation
+  };
+};
+
+// MessageBubble component
+const MessageBubble = React.memo(({ message, isSelf }) => (
+  <div className={`flex ${isSelf ? 'justify-end' : 'justify-start'} mb-4`}>
+    <div className={`p-3 rounded-lg max-w-[75%] ${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+      {message.content && <p className="mb-2">{message.content}</p>}
+      {message.file_url && <Attachment fileUrl={message.file_url} />}
+      <span className={`text-xs ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
+        {moment(message.created_at).format('LT')}
+      </span>
+    </div>
+  </div>
+));
+
+// ConversationItem component
+const ConversationItem = React.memo(({ conv, onSelect, onClose }) => (
+  <div onClick={() => onSelect(conv)} className="p-4 hover:bg-gray-50 cursor-pointer border-b">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center space-x-3">
+        <ProfilePicture profilePicUrl={conv.otherUserPic} name={conv.otherUserName} size="10" />
+        <div>
+          <h3 className="font-semibold">{conv.otherUserName}</h3>
+          <p className="text-sm text-gray-500 truncate">{conv.gigTitle}</p>
+        </div>
+      </div>
+      <button 
+        onClick={(e) => onClose(conv._id, e)}
+        className="text-gray-400 hover:text-gray-600"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+));
+
+// TypingIndicator component
+const TypingIndicator = () => (
+  <div className="text-gray-500">Typing...</div>
+);
+
+// AttachmentPreview component
+const AttachmentPreview = ({ attachment, onRemove }) => (
+  <div className="mb-4 relative">
+    <img
+      src={URL.createObjectURL(attachment)}
+      alt="Attachment"
+      className="h-24 w-24 object-cover rounded"
+    />
+    <button 
+      onClick={onRemove}
+      className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1"
+    >
+      <X className="w-4 h-4" />
+    </button>
+  </div>
+);
+
+export default function Messages() {
+  const { token, userData } = useContext(AuthContext);
+  const userId = userData?.userId;
+  const navigate = useNavigate();
+  const { conversationId: urlConversationId } = useParams();
+  const [notFoundModal, setNotFoundModal] = useState(false);
+
+  const {
+    conversations,
+    activeConversation,
+    searchTerm,
+    setSearchTerm,
+    handleSelectConversation,
+    setActiveConversation
+  } = useConversations(token, urlConversationId, navigate);
+
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [attachment, setAttachment] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [typingUser, setTypingUser] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showNewChatButton, setShowNewChatButton] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
-
-  const socketRef = useRef(null);
+  const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  useEffect(() => {
-    if (!token) return;
-    socketRef.current = io(import.meta.env.VITE_SERVER, {
-      auth: { token },
-    });
-
-    socketRef.current.on('connect_error', (err) => {
-      console.error('Socket connect error:', err.message);
-    });
-
-    socketRef.current.on('typing', ({ userId: typingId }) => {
-      if (typingId !== userId) {
-        setTypingUser(typingId);
+  // Socket handlers
+  const socketHandlers = {
+    onTyping: ({ userId: typingId }) => {
+      if (typingId !== userId && activeConversation) {
         setIsTyping(true);
         setTimeout(() => setIsTyping(false), 2000);
       }
-    });
-
-    socketRef.current.on('newMessage', (msgData) => {
+    },
+    onNewMessage: (msgData) => {
       if (msgData.conversation_id === activeConversation?._id) {
-        setMessages((prev) => [...prev, msgData]);
+        setMessages(prev => [...prev, msgData]);
       }
-    });
-
-    socketRef.current.on('messageDeleted', ({ messageId }) => {
-      setMessages((prev) => prev.filter((m) => m._id !== messageId));
-    });
-
-    return () => {
-      socketRef.current.disconnect();
-    };
-  }, [token, userId, activeConversation]);
-
-  useEffect(() => {
-    if (!token) return;
-    axios
-      .get('/messages')
-      .then((res) => {
-        const validConversations = res.data.filter((conv) => conv.gigTitle && conv.gigTitle.trim() !== '');
-        setConversations(validConversations);
-      })
-      .catch((err) => console.error('Error fetching conversations:', err));
-  }, [token]);
-
-  useEffect(() => {
-    if (!urlConversationId || !conversations.length) return;
-    const found = conversations.find(
-      (c) => c._id === urlConversationId || c.conversationId === urlConversationId
-    );
-    if (found) handleSelectConversation(found);
-  }, [urlConversationId, conversations]);
-
-  useEffect(() => {
-    if (!activeConversation) {
-      setMessages([]);
-      return;
+    },
+    onMessageDeleted: ({ messageId }) => {
+      setMessages(prev => prev.filter(m => m._id !== messageId));
     }
-    socketRef.current.emit('joinConversation', activeConversation._id);
+  };
 
-    axios
-      .get(`/messages/${activeConversation._id}`)
-      .then((res) => setMessages(res.data))
-      .catch((err) => console.error('Error fetching messages:', err));
+  const socketRef = useSocket(token, userId, activeConversation, socketHandlers);
+
+  // Fetch messages when conversation changes
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    const fetchMessages = async () => {
+      try {
+        const res = await axios.get(`/messages/${activeConversation._id}`);
+        setMessages(res.data);
+      } catch (err) {
+        console.error('Error fetching messages:', err);
+      }
+    };
+
+    fetchMessages();
   }, [activeConversation]);
 
+  // Handle URL conversation not found
   useEffect(() => {
-    if (messagesContainerRef.current) {
-      const { scrollHeight, clientHeight, scrollTop } = messagesContainerRef.current;
-      const isAtBottom = scrollHeight - clientHeight - scrollTop < 50;
-      if (isAtBottom) {
-        messagesContainerRef.current.scrollTop = scrollHeight;
-        setShowNewChatButton(false);
-      } else {
-        setShowNewChatButton(true);
-      }
+    if (urlConversationId && conversations.length > 0) {
+      const exists = conversations.some(c => c._id === urlConversationId);
+      setNotFoundModal(!exists);
     }
-  }, [messages]);
+  }, [urlConversationId, conversations]);
 
-  const scrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-      setShowNewChatButton(false);
-    }
-  };
-
-  const handleSelectConversation = (conv) => {
-    setActiveConversation(conv);
-    setNewMessage('');
-    setAttachment(null);
-    navigate(`/messages/${conv._id}`);
-    setShowSidebar(false); // Hide sidebar on mobile when a conversation is selected
-  };
-
+  // Message handling functions
   const handleSendMessage = async () => {
-    if (!newMessage.trim() && !attachment) return;
+    if ((!newMessage.trim() && !attachment) || !activeConversation) return;
+
     try {
       let file_url = null;
       if (attachment) {
         setIsUploading(true);
         const formData = new FormData();
         formData.append('file', attachment);
-        formData.append('type', 'message');
-        formData.append('foreign_key_id', activeConversation._id);
-        const response = await axios.post('/attachments', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        file_url = response.data.file_url;
+        const res = await axios.post('/attachments', formData);
+        file_url = res.data.file_url;
         setIsUploading(false);
       }
 
@@ -160,325 +251,212 @@ export default function Messages() {
     }
   };
 
-  const handleRemoveAttachment = () => {
-    setAttachment(null);
-  };
-
-  const handleDeleteMessage = async (msgId) => {
+  const handleCloseConversation = async (conversationId, e) => {
+    e.stopPropagation();
     try {
-      await axios.delete(`/messages/${msgId}`);
-      setMessages((prev) => prev.filter((m) => m._id !== msgId));
+      await axios.delete(`/messages/conversation/${conversationId}`);
+      setConversations(prev => prev.filter(c => c._id !== conversationId));
+      if (activeConversation?._id === conversationId) {
+        setActiveConversation(null);
+        navigate('/messages');
+      }
     } catch (err) {
-      console.error('Error deleting message:', err);
+      console.error('Error closing conversation:', err);
     }
   };
 
-  const handleReportMessage = async (msgId) => {
-    try {
-      await axios.post(`/messages/${msgId}/report`);
-      alert('Message reported.');
-    } catch (err) {
-      console.error('Error reporting message:', err);
-    }
-  };
-
-  const handleBlockConversation = async () => {
+  const handleBlockUser = async () => {
+    if (!activeConversation) return;
+    
     try {
       await axios.post(`/messages/${activeConversation._id}/block`);
-      alert('Conversation blocked.');
-      setActiveConversation((prev) => ({ ...prev, isBlocked: true }));
+      setActiveConversation(prev => ({ ...prev, isBlocked: true }));
     } catch (err) {
-      console.error('Error blocking conversation:', err);
+      console.error('Error blocking user:', err);
     }
   };
 
-  const handleUnblockConversation = async () => {
-    try {
-      await axios.post(`/messages/${activeConversation._id}/unblock`);
-      alert('Conversation unblocked.');
-      setActiveConversation((prev) => ({ ...prev, isBlocked: false }));
-    } catch (err) {
-      console.error('Error unblocking conversation:', err);
-    }
-  };
+  // Responsive sidebar handling
+  useEffect(() => {
+    const handleResize = () => {
+      setShowSidebar(window.innerWidth >= 768);
+    };
 
-  const handleViewGig = () => {
-    if (activeConversation?.gigId) {
-      navigate(`/gig/${activeConversation.gigId}`);
-    }
-  };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
-  const handleViewProfile = () => {
-    if (activeConversation?.otherUserId) {
-      navigate(`/communitycard/${activeConversation.otherUserId}`);
-    }
-  };
+  return (
+    <div className="h-screen flex pt-16 h-full bg-white">
+      {/* Not Found Modal */}
+      {notFoundModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Conversation Not Found</h2>
+            <button
+              onClick={() => {
+                navigate('/messages');
+                setNotFoundModal(false);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Return to Messages
+            </button>
+          </div>
+        </div>
+      )}
 
-  const handleTyping = () => {
-    if (!activeConversation) return;
-    socketRef.current.emit('typing', {
-      conversationId: activeConversation._id,
-    });
-  };
+      {/* Sidebar */}
+      <aside className={`w-full md:w-96 border-r ${showSidebar ? 'block' : 'hidden'} md:block`}>
+        <div className="p-4 border-b">
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            className="w-full p-2 border rounded"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="overflow-y-auto h-[calc(100vh-140px)]">
+          {conversations.map(conv => (
+            <ConversationItem
+              key={conv._id}
+              conv={conv}
+              onSelect={handleSelectConversation}
+              onClose={handleCloseConversation}
+            />
+          ))}
+        </div>
+      </aside>
 
-  const filteredConversations = conversations.filter((c) =>
-    (c.otherUserName || '').toLowerCase().includes(searchTerm.toLowerCase())
+      {/* Main Chat */}
+      <main className="flex-1 flex flex-col">
+        {activeConversation ? (
+          <>
+            <ChatHeader
+              activeConversation={activeConversation}
+              onShowSidebar={() => setShowSidebar(true)}
+              onBlockUser={handleBlockUser}
+            />
+
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">
+              {messages.map(message => (
+                <MessageBubble 
+                  key={message._id}
+                  message={message}
+                  isSelf={message.sender_id === userId}
+                />
+              ))}
+              {isTyping && <TypingIndicator />}
+            </div>
+
+            {!activeConversation.isBlocked ? (
+              <MessageInput
+                newMessage={newMessage}
+                attachment={attachment}
+                isUploading={isUploading}
+                activeConversation={activeConversation}
+                onMessageChange={setNewMessage}
+                onAttachmentChange={setAttachment}
+                onSend={handleSendMessage}
+                fileInputRef={fileInputRef}
+                socket={socketRef.current}
+              />
+            ) : (
+              <div className="p-4 bg-red-100 text-red-600 text-center">
+                This conversation is blocked
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            Select a conversation to start messaging
+          </div>
+        )}
+      </main>
+    </div>
   );
+}
 
-  const MessageActions = ({ message, isSelf }) => (
+// Extracted ChatHeader component
+const ChatHeader = ({ activeConversation, onShowSidebar, onBlockUser }) => (
+  <div className="p-4 border-b flex items-center justify-between">
+    <div className="flex items-center space-x-4">
+      <button className="md:hidden" onClick={onShowSidebar}>
+        <ChevronLeft className="w-6 h-6" />
+      </button>
+      <ProfilePicture 
+        profilePicUrl={activeConversation.otherUserPic} 
+        name={activeConversation.otherUserName}
+        size="10"
+      />
+      <div>
+        <h2 className="font-semibold">{activeConversation.otherUserName}</h2>
+        <p className="text-sm text-gray-500">{activeConversation.gigTitle}</p>
+      </div>
+    </div>
     <DropdownMenu>
-      <DropdownMenuTrigger className="focus:outline-none">
-        <MoreVertical className="w-4 h-4 text-gray-500" />
+      <DropdownMenuTrigger>
+        <MoreVertical className="w-6 h-6" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        {isSelf && (
-          <DropdownMenuItem onClick={() => handleDeleteMessage(message._id)}>
-            Delete Message
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={() => handleReportMessage(message._id)}>
-          Report Message
+        <DropdownMenuItem onSelect={onBlockUser}>
+          {activeConversation.isBlocked ? 'Unblock User' : 'Block User'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  </div>
+);
 
-  const ConversationHeader = () => (
-    <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button 
-            className="md:hidden"
-            onClick={() => {
-              setShowSidebar(true);
-              setActiveConversation(null); // Reset active conversation to show the sidebar
-            }}
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <div className="flex items-center space-x-3">
-            <ProfilePicture
-              profilePicUrl={activeConversation.otherUserPic}
-              name={activeConversation.otherUserName}
-              size="10"
-            />
-            <div>
-              <h2 className="font-semibold">{activeConversation.otherUserName}</h2>
-              <p className="text-sm text-gray-500">{activeConversation.gigTitle}</p>
-            </div>
-          </div>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <MoreVertical className="w-6 h-6" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={handleViewGig}>View Gig</DropdownMenuItem>
-            <DropdownMenuItem onClick={handleViewProfile}>View Profile</DropdownMenuItem>
-            <DropdownMenuItem onClick={
-              activeConversation.isBlocked ? handleUnblockConversation : handleBlockConversation
-            }>
-              {activeConversation.isBlocked ? 'Unblock' : 'Block'} User
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+// Extracted MessageInput component
+const MessageInput = React.memo(({
+  newMessage,
+  attachment,
+  isUploading,
+  activeConversation,
+  onMessageChange,
+  onAttachmentChange,
+  onSend,
+  fileInputRef,
+  socket
+}) => (
+  <div className="p-4 border-t">
+    {attachment && (
+      <AttachmentPreview
+        attachment={attachment}
+        onRemove={() => onAttachmentChange(null)}
+      />
+    )}
+    <div className="flex space-x-2">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={(e) => onAttachmentChange(e.target.files?.[0])}
+      />
+      <button
+        onClick={() => fileInputRef.current.click()}
+        className="p-2 hover:bg-gray-100 rounded"
+      >
+        <Paperclip className="w-6 h-6" />
+      </button>
+      <input
+        value={newMessage}
+        onChange={(e) => {
+          onMessageChange(e.target.value);
+          socket?.emit('typing', { conversationId: activeConversation._id });
+        }}
+        onKeyPress={(e) => e.key === 'Enter' && onSend()}
+        className="flex-1 p-2 border rounded"
+        placeholder="Type a message..."
+      />
+      <button
+        onClick={onSend}
+        disabled={isUploading}
+        className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >
+        <Send className="w-6 h-6" />
+      </button>
     </div>
-  );
-
-  return (
-    <div className="h-screen overflow-hidden flex flex-col bg-white pt-16">
-      {/* Container for sidebar and main chat area, space reserved for navbar above */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside 
-          className={`
-            w-full md:w-80 border-r border-gray-200 flex flex-col
-            ${showSidebar ? 'block' : 'hidden'} md:block
-          `}
-        >
-          <div className="p-4 border-b border-gray-200">
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          
-          {/* Scrollable chat list with mac-style scrollbar */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-500">
-            {filteredConversations.map((conv) => (
-              <div
-                key={conv._id}
-                onClick={() => {
-                  handleSelectConversation(conv);
-                  setShowSidebar(false);
-                }}
-                className={`
-                  p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer
-                  ${activeConversation?._id === conv._id ? 'bg-blue-50' : ''}
-                `}
-              >
-                <div className="flex items-start space-x-3">
-                  <ProfilePicture
-                    profilePicUrl={conv.otherUserPic}
-                    name={conv.otherUserName}
-                    size="12"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold truncate">{conv.otherUserName}</h3>
-                      <span className="text-xs text-gray-500">
-                        {moment(conv.lastMessageTime).fromNow()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 truncate">{conv.gigTitle}</p>
-                    <p className="text-sm text-gray-500 truncate">{conv.lastMessage}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-    
-        {/* Main Chat Area */}
-        <main 
-          className="flex-1 flex flex-col"
-          style={{ height: 'calc(100vh - 4rem)' }}  // Adjust height to fit below reserved navbar space
-        >
-          {activeConversation ? (
-            <>
-              <ConversationHeader />
-              {/* Scrollable messages container with mac-style scrollbar */}
-              <div 
-                ref={messagesContainerRef}
-                className="relative flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-500"
-              >
-                {messages.map((message) => {
-                  const isSelf = message.sender_id === userId;
-                  return (
-                    <div
-                      key={message._id}
-                      className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`
-                        max-w-[70%] rounded-lg p-3 group relative
-                        ${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-100'}
-                      `}>
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100">
-                          <MessageActions message={message} isSelf={isSelf} />
-                        </div>
-                        <p className="break-words">{message.content}</p>
-                        {message.file_url && (
-                          <Attachment fileUrl={message.file_url} />
-                        )}
-                        <span className={`
-                          text-xs mt-1 block
-                          ${isSelf ? 'text-blue-200' : 'text-gray-500'}
-                        `}>
-                          {moment(message.created_at).format('LT')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {isTyping && (
-                  <div className="text-sm text-gray-500">
-                    {activeConversation.otherUserName} is typing...
-                  </div>
-                )}
-    
-                {/* Jump to Latest Message Button */}
-                {showNewChatButton && (
-                  <button 
-                    onClick={scrollToBottom}
-                    className="absolute left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded shadow-md"
-                  >
-                    Jump to Latest Message
-                  </button>
-                )}
-              </div>
-    
-              <div className="border-t border-gray-200 p-4 bg-white">
-                {attachment && (
-                  <div className="mb-2 relative inline-block">
-                    <img
-                      src={URL.createObjectURL(attachment)}
-                      alt="Attachment preview"
-                      className="h-20 w-20 object-cover rounded"
-                    />
-                    <button
-                      onClick={() => setAttachment(null)}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value);
-                      handleTyping();
-                    }}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Type a message..."
-                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={activeConversation.isBlocked}
-                  />
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file && file.size <= 25 * 1024 * 1024) {
-                        setAttachment(file);
-                      } else {
-                        alert('File size must be less than 25MB');
-                      }
-                    }}
-                    accept="image/*,video/*,application/pdf"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
-                    disabled={activeConversation.isBlocked}
-                  >
-                    <Paperclip className="w-6 h-6" />
-                  </button>
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={(!newMessage.trim() && !attachment) || isUploading || activeConversation.isBlocked}
-                    className={`
-                      p-2 rounded-lg flex items-center justify-center
-                      ${(!newMessage.trim() && !attachment) || isUploading || activeConversation.isBlocked
-                        ? 'bg-gray-200 text-gray-400'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'}
-                    `}
-                  >
-                    <Send className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-400">
-              Select a conversation to start messaging
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}  
+  </div>
+));

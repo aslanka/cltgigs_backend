@@ -269,3 +269,13 @@ exports.unblockConversation = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+exports.deleteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    await Conversation.findByIdAndDelete(conversationId);
+    res.json({ message: 'Conversation deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};

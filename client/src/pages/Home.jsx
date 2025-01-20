@@ -1,40 +1,34 @@
-import { DotPattern } from "@/components/ui/dot-pattern";
+import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
-import { Search, MapPin, Filter, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Package } from 'lucide-react';
-import ProfilePicture from '../components/ProfilePicture';
-import Mascot from '../assets/mascot.svg'
+import { Search, MapPin, Filter, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Star, Award, Rocket } from 'lucide-react';
+import Mascot from '../assets/mascot.svg';
 
+// Skeleton Loading Component
 const SkeletonCard = () => (
-  <div className="animate-pulse p-4 rounded-lg bg-gray-200">
-    <div className="h-48 bg-gray-300 rounded mb-4"></div>
-    <div className="h-4 bg-gray-300 rounded w-3/4 mb-2"></div>
-    <div className="h-4 bg-gray-300 rounded w-5/6"></div>
-  </div>
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="animate-pulse p-4 rounded-2xl bg-white shadow-sm">
+    <div className="h-48 bg-gray-200 rounded-xl mb-4"></div>
+    <div className="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
+    <div className="h-4 bg-gray-200 rounded w-5/6 mb-3"></div>
+    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+  </motion.div>
 );
 
-// Helper function to get category-specific emoji and background color
+// Category Details with Gradients
 const getCategoryDetails = (category) => {
-  switch (category) {
-    case 'Music':
-      return { emoji: '🎵', color: '#FEF3C7' }; // Light yellow
-    case 'Carpentry':
-      return { emoji: '🪚', color: '#D1FAE5' }; // Light green
-    case 'House Work':
-      return { emoji: '🏠', color: '#DBEAFE' }; // Light blue
-    case 'Cleaning':
-      return { emoji: '🧹', color: '#FCE7F3' }; // Light pink
-    case 'Photography':
-      return { emoji: '📸', color: '#FEE2E2' }; // Light red
-    case 'Plumbing':
-      return { emoji: '🚰', color: '#E0E7FF' }; // Light indigo
-    case 'Electrician':
-      return { emoji: '🔌', color: '#FEF9C3' }; // Light amber
-    default:
-      return { emoji: '💼', color: '#F3F4F6' }; // Light gray (default)
-  }
+  const styles = {
+    'Music': { emoji: '🎵', gradient: 'from-purple-100 to-purple-50' },
+    'Carpentry': { emoji: '🪚', gradient: 'from-amber-100 to-amber-50' },
+    'House Work': { emoji: '🏠', gradient: 'from-blue-100 to-blue-50' },
+    'Cleaning': { emoji: '🧹', gradient: 'from-emerald-100 to-emerald-50' },
+    'Photography': { emoji: '📸', gradient: 'from-pink-100 to-pink-50' },
+    'Plumbing': { emoji: '🚰', gradient: 'from-cyan-100 to-cyan-50' },
+    'Electrician': { emoji: '🔌', gradient: 'from-yellow-100 to-yellow-50' },
+    'default': { emoji: '💼', gradient: 'from-gray-100 to-gray-50' }
+  };
+  return styles[category] || styles['default'];
 };
 
 const Home = () => {
@@ -50,7 +44,6 @@ const Home = () => {
   const [tags, setTags] = useState('');
   const [sortBy, setSortBy] = useState('date_desc');
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -65,7 +58,6 @@ const Home = () => {
 
   useEffect(() => {
     fetchGigs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, category, sortBy, page, zipCode, distance, minBudget, maxBudget, isVolunteer, tags]);
 
   const fetchGigs = async () => {
@@ -111,251 +103,326 @@ const Home = () => {
   const totalPages = Math.ceil(totalGigs / limit);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       {/* Header */}
-      {/* ========== HEADER ========== */}
-<header className="relative bg-white border-b border-gray-200">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    {/* Branding and Title */}
-    <div className="text-center mb-8 flex items-center justify-center">
-  <img src={Mascot} alt="Mascot" className="h-16 w-16 sm:h-20 sm:w-20 mr-4" />
-  <h1 className="text-4xl sm:text-5xl font-bold text-blue-600">
-    CharlotteGigs
-  </h1>
-</div>
+      <header className="relative bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center mb-8 space-y-6 md:space-y-0">
+            <div className="flex items-center space-x-4">
+              <img src={Mascot} alt="Mascot" className="h-16 w-16 animate-bounce" />
+              <div>
+                <h1 className="text-4xl font-bold">CharlotteGigs</h1>
+                <p className="text-lg opacity-90">Find your next opportunity • Earn rewards • Make connections</p>
+              </div>
+            </div>
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              onClick={handleCreateGig}
+              className="flex items-center space-x-2 bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+            >
+              <Rocket className="w-5 h-5" />
+              <span>Post a Gig</span>
+            </motion.button>
+          </div>
 
-    {/* Search and Filters Section */}
-    <div className="space-y-4">
-      {/* Search Input */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search for gigs..."
-          className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setPage(1);
-          }}
-        />
-      </div>
+          {/* Search Section */}
+          <motion.div 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-xl"
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="relative">
+                <Search className="absolute left-4 top-4 h-5 w-5 text-white/80" />
+                <input
+                  type="text"
+                  placeholder="Search gigs, skills, categories..."
+                  className="w-full pl-12 pr-4 py-3 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="relative flex-1">
+                  <MapPin className="absolute left-4 top-4 h-5 w-5 text-white/80" />
+                  <input
+                    type="text"
+                    placeholder="Zip code"
+                    className="w-full pl-12 pr-4 py-3 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
+                    value={zipCode}
+                    onChange={(e) => setZipCode(e.target.value)}
+                  />
+                </div>
+                <select
+                  className="bg-white/10 rounded-xl border border-white/20 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white"
+                  value={distance}
+                  onChange={(e) => setDistance(e.target.value)}
+                >
+                  <option value="10">10mi</option>
+                  <option value="25">25mi</option>
+                  <option value="50">50mi</option>
+                  <option value="100">100mi</option>
+                </select>
+              </div>
 
-      {/* Location and Distance Filters */}
-      <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
-        <div className="flex-1 relative">
-          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Enter Zip Code"
-            className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={zipCode}
-            onChange={(e) => setZipCode(e.target.value)}
-          />
-        </div>
-        <select
-          className="bg-gray-50 rounded-xl border-0 py-3 pl-4 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={distance}
-          onChange={(e) => setDistance(e.target.value)}
-        >
-          <option value="10">10mi</option>
-          <option value="25">25mi</option>
-          <option value="50">50mi</option>
-          <option value="100">100mi</option>
-          <option value="250">250mi</option>
-        </select>
-        <button
-          onClick={handleZipSearch}
-          className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Go
-        </button>
-      </div>
+              <button
+                onClick={handleZipSearch}
+                className="w-full bg-white text-blue-600 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-colors flex items-center justify-center space-x-2"
+              >
+                <Search className="w-5 h-5" />
+                <span>Find Gigs</span>
+              </button>
+            </div>
 
-      {/* Advanced Filters */}
-      <div className="mt-4 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
-          <input
-            type="number"
-            placeholder="Min Budget"
-            className="w-full sm:w-1/2 px-4 py-2 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={minBudget}
-            onChange={(e) => setMinBudget(e.target.value)}
-          />
-          <input
-            type="number"
-            placeholder="Max Budget"
-            className="w-full sm:w-1/2 px-4 py-2 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={maxBudget}
-            onChange={(e) => setMaxBudget(e.target.value)}
-          />
+            {/* Advanced Filters */}
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-between text-sm cursor-pointer" onClick={() => setShowAdvanced(!showAdvanced)}>
+                <span className="font-medium">Advanced Filters</span>
+                <ChevronRight className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
+              </div>
+              
+              <AnimatePresence>
+                {showAdvanced && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="space-y-4 overflow-hidden"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
+                      <input
+                        type="number"
+                        placeholder="Min Budget"
+                        className="w-full sm:w-1/2 px-4 py-2 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
+                        value={minBudget}
+                        onChange={(e) => setMinBudget(e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Max Budget"
+                        className="w-full sm:w-1/2 px-4 py-2 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
+                        value={maxBudget}
+                        onChange={(e) => setMaxBudget(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="isVolunteer"
+                        checked={isVolunteer}
+                        onChange={(e) => setIsVolunteer(e.target.checked)}
+                        className="w-4 h-4 rounded border-white/20 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="isVolunteer" className="text-sm">
+                        Volunteer Gigs Only
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Tags (comma-separated)"
+                      className="w-full px-4 py-2 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
         </div>
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            id="isVolunteer"
-            checked={isVolunteer}
-            onChange={(e) => setIsVolunteer(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label htmlFor="isVolunteer" className="text-sm text-gray-700">
-            Volunteer Gigs Only
-          </label>
+      </header>
+
+      {/* Gamification Banner */}
+      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Award className="w-6 h-6" />
+            <span className="font-medium">Earn 500 XP for your first gig completion!</span>
+          </div>
+          <button className="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30 transition">
+            <span>View Rewards</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-        <input
-          type="text"
-          placeholder="Tags (comma-separated)"
-          className="w-full px-4 py-2 bg-gray-50 rounded-xl border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-        />
       </div>
-    </div>
-  </div>
-</header>
-{/* ========== END HEADER ========== */}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
-          <div className="flex items-center space-x-4 mb-4 sm:mb-0">
-            <Filter className="h-5 w-5 text-gray-400" />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-4">
+          <div className="flex items-center space-x-4 bg-white p-3 rounded-xl shadow-sm">
+            <Filter className="h-6 w-6 text-blue-600" />
             <select
-              className="px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+              className="bg-transparent text-lg font-medium focus:outline-none"
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value);
                 setPage(1);
               }}
             >
-              <option value="date_desc">Newest First</option>
-              <option value="date_asc">Oldest First</option>
-              <option value="price_asc">Price: Low to High</option>
-              <option value="price_desc">Price: High to Low</option>
+              <option value="date_desc">🔥 Newest First</option>
+              <option value="date_asc">⏳ Oldest First</option>
+              <option value="price_asc">💸 Low to High</option>
+              <option value="price_desc">💰 High to Low</option>
             </select>
           </div>
 
-          <button
-            onClick={handleCreateGig}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors text-lg"
-          >
-            Post a Gig
-          </button>
+          <div className="flex items-center space-x-4">
+            <div className="bg-white p-3 rounded-xl shadow-sm">
+              <span className="text-lg font-medium">👑 Top Gigger This Week:</span>
+              <span className="ml-2 text-blue-600">SarahM (2450 XP)</span>
+            </div>
+          </div>
         </div>
 
-        {/* Gigs Grid */}
+        {/* Gig Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {isLoading
-            ? Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
-            : gigs.map((gig) => {
-                const { emoji, color } = getCategoryDetails(gig.category);
+          <AnimatePresence>
+            {isLoading ? (
+              Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
+            ) : (
+              gigs.map((gig) => {
+                const { emoji, gradient } = getCategoryDetails(gig.category);
 
                 return (
-                  <Link
-                    to={`/gigs/${gig._id}`}
+                  <motion.div
                     key={gig._id}
-                    className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    layout
                   >
-                    {/* Image Section with Tags Overlay */}
-                    <div className="relative">
-                      {gig.attachment ? (
-                        <img
-                          loading="lazy"
-                          crossOrigin="anonymous"
-                          src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`}
-                          alt={gig.title}
-                          className="w-full h-48 object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="w-full h-48 flex items-center justify-center"
-                          style={{ backgroundColor: color }}
-                        >
-                          <span className="text-6xl">{emoji}</span>
+                    <Link
+                      to={`/gigs/${gig._id}`}
+                      className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col"
+                    >
+                      {/* Image/Category Section */}
+                      <div className={`relative bg-gradient-to-br ${gradient} h-48 flex items-center justify-center`}>
+                        {gig.attachment ? (
+                          <img
+                            crossOrigin='anonymous'
+                            src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`}
+                            alt={gig.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-7xl transform transition group-hover:scale-110">{emoji}</span>
+                        )}
+                        <div className="absolute top-3 left-3 flex space-x-2">
+                          {gig.tags?.map((tag, index) => (
+                            <span
+                              key={index}
+                              className="px-2 py-1 bg-white/90 text-xs font-medium rounded-full backdrop-blur-sm"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
                         </div>
-                      )}
-                      {/* Tags Overlay */}
-                      <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-2">
-                        {gig.tags?.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Content Section */}
-                    <div className="p-6 space-y-4">
-                      <div className="flex justify-between items-start">
-                        <h2 className="text-xl font-semibold text-gray-900">{gig.title}</h2>
-                        <div className="flex items-center gap-2">
-                          <Users className="text-gray-500 w-5 h-5" />
-                          <span className="text-gray-600">{gig.team_size}</span>
+                        <div className="absolute bottom-3 right-3 flex items-center space-x-1 bg-white/90 px-3 py-1 rounded-full backdrop-blur-sm">
+                          <Star className="w-4 h-4 text-yellow-500" />
+                          <span className="text-sm font-medium">4.8</span>
                         </div>
                       </div>
 
-                      <p className="text-gray-600 line-clamp-3">{gig.description}</p>
+                      {/* Card Content */}
+                      <div className="p-4 flex-1 flex flex-col">
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className="text-xl font-bold text-gray-900">{gig.title}</h3>
+                          <div className="flex items-center space-x-1">
+                            <Users className="w-5 h-5 text-gray-500" />
+                            <span className="font-medium">{gig.team_size}</span>
+                          </div>
+                        </div>
 
-                      {/* Gig Features */}
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Tag className="text-gray-500 w-5 h-5" />
-                          <span className="text-gray-600">Category: <span className="font-medium">{gig.category}</span></span>
+                        <p className="text-gray-600 mb-4 line-clamp-2 flex-1">{gig.description}</p>
+
+                        {/* Progress Bar */}
+                        <div className="mb-4">
+                          <div className="h-2 bg-gray-200 rounded-full">
+                            <div 
+                              className="h-2 bg-blue-500 rounded-full transition-all"
+                              style={{ width: `${Math.min((gig.applications || 0) * 20, 100)}%` }}
+                            />
+                          </div>
+                          <div className="text-sm text-gray-500 mt-1">
+                            {gig.applications || 0} applications • 2 days left
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="text-gray-500 w-5 h-5" />
-                          <span className="text-gray-600">Zip Code: <span className="font-medium">{gig.zipcode}</span></span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="text-gray-500 w-5 h-5" />
-                          <span className="text-gray-600">Dates: <span className="font-medium">
-                            {gig.start_date ? new Date(gig.start_date).toLocaleDateString() : 'N/A'} -{' '}
-                            {gig.completion_date ? new Date(gig.completion_date).toLocaleDateString() : 'N/A'}
-                          </span></span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {gig.is_volunteer ? (
-                            <Heart className="text-red-500 w-5 h-5" />
-                          ) : (
-                            <DollarSign className="text-gray-500 w-5 h-5" />
-                          )}
-                          <span className="text-gray-600">
-                            {gig.is_volunteer ? 'Volunteer Work' : `Budget: $${gig.budget_range_min} - $${gig.budget_range_max}`}
-                          </span>
+
+                        {/* Gig Details */}
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-4 h-4 text-gray-500" />
+                            <span>{gig.zipcode}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {gig.is_volunteer ? (
+                              <Heart className="w-4 h-4 text-red-500" />
+                            ) : (
+                              <DollarSign className="w-4 h-4 text-green-500" />
+                            )}
+                            <span className={gig.is_volunteer ? 'text-red-600' : 'text-green-600'}>
+                              {gig.is_volunteer ? 'Volunteer Opportunity' : `$${gig.budget_range_min}-$${gig.budget_range_max}`}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+                  </motion.div>
                 );
               })
-          }
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Pagination Controls */}
-        <div className="flex justify-center items-center space-x-4 mt-8">
-          <button
+        {/* Pagination */}
+        <div className="flex justify-center items-center space-x-4 mt-12">
+          <motion.button
+            whileHover={{ scale: 1.1 }}
             disabled={page === 1}
             onClick={() => setPage(page - 1)}
-            className="flex items-center space-x-1 px-4 py-2 bg-gray-300 rounded disabled:opacity-50 text-lg"
+            className="flex items-center space-x-2 px-6 py-2 bg-white rounded-xl shadow-sm hover:shadow-md disabled:opacity-50"
           >
-            <ChevronLeft />
-            <span>Previous</span>
-          </button>
-          <span className="text-lg">
-            Page {page} of {totalPages}
-          </span>
-          <button
+            <ChevronLeft className="w-5 h-5" />
+            <span className="font-medium">Previous</span>
+          </motion.button>
+          
+          <div className="flex items-center space-x-2">
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i + 1)}
+                className={`w-10 h-10 rounded-lg ${page === i + 1 ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'} hover:bg-blue-100`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.1 }}
             disabled={page === totalPages}
             onClick={() => setPage(page + 1)}
-            className="flex items-center space-x-1 px-4 py-2 bg-gray-300 rounded disabled:opacity-50 text-lg"
+            className="flex items-center space-x-2 px-6 py-2 bg-white rounded-xl shadow-sm hover:shadow-md disabled:opacity-50"
           >
-            <span>Next</span>
-            <ChevronRight />
-          </button>
+            <span className="font-medium">Next</span>
+            <ChevronRight className="w-5 h-5" />
+          </motion.button>
         </div>
+
+        {/* Floating CTA */}
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleCreateGig}
+          className="fixed bottom-8 right-8 bg-blue-600 text-white p-4 rounded-full shadow-xl flex items-center space-x-2 z-50"
+        >
+          <Rocket className="w-6 h-6" />
+          <span className="font-bold">Post a Gig</span>
+        </motion.button>
       </main>
     </div>
   );
