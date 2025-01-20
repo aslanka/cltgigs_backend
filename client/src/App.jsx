@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 
 // Pages
@@ -21,14 +21,13 @@ import SearchResults from './pages/SearchResults';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
+  const location = useLocation();
+  const isMessagesPage = location.pathname.startsWith('/messages');
+
   return (
-    <div className="bg-gray-100">
+    <div className="bg-gray-100 min-h-screen overflow-hidden">
       <Navbar />
-      {/* 
-        Add top padding equal to the navbar height (16 * 4px = 64px for h-16)
-        so that Routes content starts below the fixed navbar.
-      */}
-      <div className="pt-16">
+      <div className={`h-full ${isMessagesPage ? '' : 'pt-16'}`}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -60,7 +59,7 @@ function App() {
             }
           />
           <Route
-            path="/mybids"
+            path="/bids"
             element={
               <ProtectedRoute>
                 <MyBids />

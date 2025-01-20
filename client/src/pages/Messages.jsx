@@ -1,11 +1,18 @@
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import axios from '../api/axiosInstance';
-import { AuthContext } from '../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import moment from 'moment';
+import { Menu, X, Send, Paperclip, ChevronLeft, MoreVertical } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import axios from '../api/axiosInstance';
 import ProfilePicture from '../components/ProfilePicture';
 import Attachment from '../components/Attachment';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function Messages() {
   const { token, userData } = useContext(AuthContext);
@@ -23,9 +30,11 @@ export default function Messages() {
   const [typingUser, setTypingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewChatButton, setShowNewChatButton] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
 
   const socketRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!token) return;
@@ -93,7 +102,6 @@ export default function Messages() {
   }, [activeConversation]);
 
   useEffect(() => {
-    // Auto-scroll to bottom when messages change
     if (messagesContainerRef.current) {
       const { scrollHeight, clientHeight, scrollTop } = messagesContainerRef.current;
       const isAtBottom = scrollHeight - clientHeight - scrollTop < 50;
@@ -118,6 +126,7 @@ export default function Messages() {
     setNewMessage('');
     setAttachment(null);
     navigate(`/messages/${conv._id}`);
+    setShowSidebar(false); // Hide sidebar on mobile when a conversation is selected
   };
 
   const handleSendMessage = async () => {
@@ -216,240 +225,260 @@ export default function Messages() {
     (c.otherUserName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  return (
-    <div className="min-h-screen bg-white flex flex-col overflow-hidden">
-      {/* Header for Mobile */}
-      <header className="md:hidden bg-white shadow p-4 flex items-center">
-        {activeConversation && (
-          <button onClick={() => setActiveConversation(null)} className="mr-4">
-            ←
-          </button>
+  const MessageActions = ({ message, isSelf }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="focus:outline-none">
+        <MoreVertical className="w-4 h-4 text-gray-500" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {isSelf && (
+          <DropdownMenuItem onClick={() => handleDeleteMessage(message._id)}>
+            Delete Message
+          </DropdownMenuItem>
         )}
-        <h1 className="text-lg font-semibold">
-          {activeConversation ? activeConversation.otherUserName : 'Messages'}
-        </h1>
-      </header>
+        <DropdownMenuItem onClick={() => handleReportMessage(message._id)}>
+          Report Message
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
-      <div className="flex-1 container mx-auto p-0 md:p-4 flex flex-col md:flex-row bg-white">
-        {/* Conversations List */}
-        <aside className={`md:w-1/3 border-r border-gray-200 ${activeConversation ? 'hidden md:block' : 'block'}`}>
+  const ConversationHeader = () => (
+    <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <button 
+            className="md:hidden"
+            onClick={() => {
+              setShowSidebar(true);
+              setActiveConversation(null); // Reset active conversation to show the sidebar
+            }}
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <div className="flex items-center space-x-3">
+            <ProfilePicture
+              profilePicUrl={activeConversation.otherUserPic}
+              name={activeConversation.otherUserName}
+              size="10"
+            />
+            <div>
+              <h2 className="font-semibold">{activeConversation.otherUserName}</h2>
+              <p className="text-sm text-gray-500">{activeConversation.gigTitle}</p>
+            </div>
+          </div>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <MoreVertical className="w-6 h-6" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={handleViewGig}>View Gig</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleViewProfile}>View Profile</DropdownMenuItem>
+            <DropdownMenuItem onClick={
+              activeConversation.isBlocked ? handleUnblockConversation : handleBlockConversation
+            }>
+              {activeConversation.isBlocked ? 'Unblock' : 'Block'} User
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-screen overflow-hidden flex flex-col bg-white pt-16">
+      {/* Container for sidebar and main chat area, space reserved for navbar above */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside 
+          className={`
+            w-full md:w-80 border-r border-gray-200 flex flex-col
+            ${showSidebar ? 'block' : 'hidden'} md:block
+          `}
+        >
           <div className="p-4 border-b border-gray-200">
             <input
               type="text"
-              placeholder="Search messages..."
-              className="w-full p-2 border rounded-lg"
+              placeholder="Search conversations..."
+              className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="overflow-y-auto h-[calc(100vh-8rem)]">
-            {filteredConversations.map((conv) => {
-              const activeClass = conv._id === activeConversation?._id ? 'bg-blue-50' : '';
-              return (
-                <div
-                  key={conv._id}
-                  onClick={() => handleSelectConversation(conv)}
-                  className={`p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${activeClass}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center space-x-2">
-                      <h3 className="font-semibold">{conv.otherUserName}</h3>
-                      {conv.online && (
-                        <span className="bg-green-500 rounded-full w-2 h-2"></span>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {moment(conv.lastMessageTime).fromNow()}
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    {conv.gigTitle}
-                  </div>
-                  <p className="text-sm text-gray-500 truncate mt-1">
-                    {conv.lastMessage}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* Message Area */}
-        <main className="flex-1 flex flex-col">
-          {activeConversation && (
-            <>
-              {/* Profile Header for Desktop */}
+          
+          {/* Scrollable chat list with mac-style scrollbar */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-500">
+            {filteredConversations.map((conv) => (
               <div
-                className="hidden md:flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer"
-                onClick={handleViewProfile}
+                key={conv._id}
+                onClick={() => {
+                  handleSelectConversation(conv);
+                  setShowSidebar(false);
+                }}
+                className={`
+                  p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer
+                  ${activeConversation?._id === conv._id ? 'bg-blue-50' : ''}
+                `}
               >
-                <div className="flex items-start space-x-4">
+                <div className="flex items-start space-x-3">
                   <ProfilePicture
-                    profilePicUrl={activeConversation.otherUserPic}
-                    name={activeConversation.otherUserName}
-                    size="10"
+                    profilePicUrl={conv.otherUserPic}
+                    name={conv.otherUserName}
+                    size="12"
                   />
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <h2 className="text-xl font-bold">
-                        {activeConversation.otherUserName}
-                      </h2>
-                      <span className="bg-green-500 rounded-full w-2 h-2"></span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <div className="flex text-yellow-400">
-                        ★★★★<span className="text-gray-300">★</span>
-                      </div>
-                      <span className="text-sm text-gray-600">
-                        (4.2 • 48 reviews)
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-semibold truncate">{conv.otherUserName}</h3>
+                      <span className="text-xs text-gray-500">
+                        {moment(conv.lastMessageTime).fromNow()}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      Member since 2023 • 89 gigs completed
-                    </p>
+                    <p className="text-sm text-gray-600 truncate">{conv.gigTitle}</p>
+                    <p className="text-sm text-gray-500 truncate">{conv.lastMessage}</p>
                   </div>
                 </div>
-                <div className="flex space-x-2">
-                  {activeConversation.isBlocked ? (
-                    <button onClick={handleUnblockConversation} title="Unblock Conversation">
-                      {/* Example icon - replace with actual icon */}
-                      🚫
-                    </button>
-                  ) : (
-                    <button onClick={handleBlockConversation} title="Block Conversation">
-                      {/* Example icon - replace with actual icon */}
-                      ❌
-                    </button>
-                  )}
-                  <button onClick={handleViewGig} title="View Gig">
-                    {/* Example icon - replace with actual icon */}
-                    🔍
-                  </button>
-                </div>
               </div>
-
-              {/* Chat Messages */}
-              <div
+            ))}
+          </div>
+        </aside>
+    
+        {/* Main Chat Area */}
+        <main 
+          className="flex-1 flex flex-col"
+          style={{ height: 'calc(100vh - 4rem)' }}  // Adjust height to fit below reserved navbar space
+        >
+          {activeConversation ? (
+            <>
+              <ConversationHeader />
+              {/* Scrollable messages container with mac-style scrollbar */}
+              <div 
                 ref={messagesContainerRef}
-                className={`flex-1 overflow-y-auto p-4 ${activeConversation.isBlocked ? 'opacity-50' : ''}`}
-                style={{ maxHeight: 'calc(100vh - 200px)' }}
+                className="relative flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-500"
               >
-                {messages.map((msg) => {
-                  const isSelf = msg.sender_id === userId;
+                {messages.map((message) => {
+                  const isSelf = message.sender_id === userId;
                   return (
                     <div
-                      key={msg._id}
-                      className={`mb-4 flex ${isSelf ? 'justify-end' : 'justify-start'}`}
+                      key={message._id}
+                      className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className="max-w-[80%] md:max-w-lg">
-                        {!isSelf && (
-                          <div className="text-xs text-gray-500 mb-1">
-                            Re: {activeConversation.gigTitle}
-                          </div>
-                        )}
-                        <div className={`${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'} rounded-lg px-4 py-2`}>
-                          <p className="text-sm break-words">{msg.content}</p>
-                          <Attachment fileUrl={msg.file_url} />
-                          <p className={`text-xs mt-1 ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
-                            {moment(msg.created_at).format('LT')}
-                          </p>
+                      <div className={`
+                        max-w-[70%] rounded-lg p-3 group relative
+                        ${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-100'}
+                      `}>
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100">
+                          <MessageActions message={message} isSelf={isSelf} />
                         </div>
+                        <p className="break-words">{message.content}</p>
+                        {message.file_url && (
+                          <Attachment fileUrl={message.file_url} />
+                        )}
+                        <span className={`
+                          text-xs mt-1 block
+                          ${isSelf ? 'text-blue-200' : 'text-gray-500'}
+                        `}>
+                          {moment(message.created_at).format('LT')}
+                        </span>
                       </div>
                     </div>
                   );
                 })}
-                {isTyping && typingUser && typingUser !== userId && (
-                  <div className="text-sm text-gray-500 mt-2">
-                    {`User ${typingUser} is typing...`}
+                {isTyping && (
+                  <div className="text-sm text-gray-500">
+                    {activeConversation.otherUserName} is typing...
                   </div>
                 )}
+    
+                {/* Jump to Latest Message Button */}
+                {showNewChatButton && (
+                  <button 
+                    onClick={scrollToBottom}
+                    className="absolute left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded shadow-md"
+                  >
+                    Jump to Latest Message
+                  </button>
+                )}
               </div>
-
-              {/* New Chat Popup Button */}
-              {showNewChatButton && (
-                <button
-                  onClick={scrollToBottom}
-                  className="fixed bottom-20 right-4 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg"
-                >
-                  New Chat
-                </button>
-              )}
-
-              {/* Message Input */}
-              <div className={`p-4 border-t border-gray-200 ${activeConversation.isBlocked ? 'opacity-50' : ''} bg-white md:static fixed bottom-0 left-0 right-0`}>
-                <div className="flex flex-col space-y-2">
-                  {attachment && (
-                    <div className="relative p-2 bg-gray-100 rounded-lg">
-                      <img
-                        src={URL.createObjectURL(attachment)}
-                        alt="Attachment"
-                        className="max-w-full h-32 object-cover rounded-lg"
-                      />
-                      <button
-                        onClick={handleRemoveAttachment}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  )}
-
-                  {isUploading && (
-                    <div className="flex items-center justify-center p-2 bg-gray-100 rounded-lg">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <span className="ml-2 text-sm text-gray-600">
-                        Uploading...
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      placeholder="Type your message..."
-                      className="flex-1 p-2 border rounded-lg"
-                      value={newMessage}
-                      onChange={(e) => {
-                        setNewMessage(e.target.value);
-                        handleTyping();
-                      }}
-                      disabled={activeConversation.isBlocked}
+    
+              <div className="border-t border-gray-200 p-4 bg-white">
+                {attachment && (
+                  <div className="mb-2 relative inline-block">
+                    <img
+                      src={URL.createObjectURL(attachment)}
+                      alt="Attachment preview"
+                      className="h-20 w-20 object-cover rounded"
                     />
-                    <label className="bg-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-300 cursor-pointer flex items-center justify-center min-w-[48px] min-h-[48px]">
-                      📎
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files[0]) setAttachment(e.target.files[0]);
-                        }}
-                        disabled={activeConversation.isBlocked}
-                      />
-                    </label>
                     <button
-                      onClick={handleSendMessage}
-                      className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center min-w-[48px] min-h-[48px]"
-                      disabled={activeConversation.isBlocked || isUploading}
+                      onClick={() => setAttachment(null)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
                     >
-                      Send
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <p>
-                      Drag & drop files or click the attachment button. Max size: 25MB
-                    </p>
-                  </div>
+                )}
+                
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value);
+                      handleTyping();
+                    }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={activeConversation.isBlocked}
+                  />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && file.size <= 25 * 1024 * 1024) {
+                        setAttachment(file);
+                      } else {
+                        alert('File size must be less than 25MB');
+                      }
+                    }}
+                    accept="image/*,video/*,application/pdf"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                    disabled={activeConversation.isBlocked}
+                  >
+                    <Paperclip className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={(!newMessage.trim() && !attachment) || isUploading || activeConversation.isBlocked}
+                    className={`
+                      p-2 rounded-lg flex items-center justify-center
+                      ${(!newMessage.trim() && !attachment) || isUploading || activeConversation.isBlocked
+                        ? 'bg-gray-200 text-gray-400'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'}
+                    `}
+                  >
+                    <Send className="w-6 h-6" />
+                  </button>
                 </div>
               </div>
             </>
-          )}
-          {!activeConversation && (
+          ) : (
             <div className="flex-1 flex items-center justify-center text-gray-400">
-              Select a conversation
+              Select a conversation to start messaging
             </div>
           )}
         </main>
       </div>
     </div>
   );
-}
+}  

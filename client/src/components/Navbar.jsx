@@ -119,40 +119,40 @@ const Navbar = () => {
 
                 {/* Profile Dropdown */}
                 <div className="relative ml-3" ref={profileDropdownRef}>
-  <button
-    onMouseEnter={() => setIsProfileDropdownOpen(true)}
-    className="flex items-center space-x-2"
-  >
-    <ProfilePicture
-      profilePicUrl={profile?.profile_pic_url}
-      name={profile?.name}
-      size="8"
-    />
-  </button>
+                  <button
+                    onMouseEnter={() => setIsProfileDropdownOpen(true)}
+                    className="flex items-center space-x-2"
+                  >
+                    <ProfilePicture
+                      profilePicUrl={profile?.profile_pic_url}
+                      name={profile?.name}
+                      size="8"
+                    />
+                  </button>
 
-  {/* Dropdown Menu */}
-  {isProfileDropdownOpen && (
-    <div
-      className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg"
-      onMouseEnter={() => setIsProfileDropdownOpen(true)}
-      onMouseLeave={() => setIsProfileDropdownOpen(false)}
-    >
-      <NavLink to="/settings" icon={Settings} onClick={() => setIsProfileDropdownOpen(false)}>
-        Settings
-      </NavLink>
-      <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setIsProfileDropdownOpen(false)}>
-        Profile
-      </NavLink>
-      <button
-        onClick={handleLogout}
-        className="flex items-center space-x-2 w-full px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
-      >
-        <LogOut size={20} />
-        <span>Logout</span>
-      </button>
-    </div>
-  )}
-</div>
+                  {/* Dropdown Menu */}
+                  {isProfileDropdownOpen && (
+                    <div
+                      className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg"
+                      onMouseEnter={() => setIsProfileDropdownOpen(true)}
+                      onMouseLeave={() => setIsProfileDropdownOpen(false)}
+                    >
+                      <NavLink to="/settings" icon={Settings} onClick={() => setIsProfileDropdownOpen(false)}>
+                        Settings
+                      </NavLink>
+                      <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setIsProfileDropdownOpen(false)}>
+                        Profile
+                      </NavLink>
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center space-x-2 w-full px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <LogOut size={20} />
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <>

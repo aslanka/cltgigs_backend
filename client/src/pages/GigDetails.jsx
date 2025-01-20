@@ -1,10 +1,23 @@
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import axios from '../api/axiosInstance';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import DOMPurify from 'dompurify';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner, faEdit, faCheck, faTimes } from '@fortawesome/free-solid-svg-icons';
+import ProfilePicture from '../components/ProfilePicture'; // Ensure this component exists
+
+// Import Lucide Icons
+import {
+  Tag,
+  MapPin,
+  Calendar,
+  Users,
+  DollarSign,
+  Check,
+  Star,
+  MessageCircle,
+  Share2,
+  Loader2,
+} from 'lucide-react';
 
 function GigDetails() {
   const { gigId } = useParams();
@@ -17,16 +30,8 @@ function GigDetails() {
   const [error, setError] = useState(null);
   const [isPlacingBid, setIsPlacingBid] = useState(false);
   const [bidSuccess, setBidSuccess] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
-  const [editedDescription, setEditedDescription] = useState('');
-  const [editedPrice, setEditedPrice] = useState('');
   const { token, userData } = useContext(AuthContext);
   const navigate = useNavigate();
-
-  const titleRef = useRef(null);
-  const descriptionRef = useRef(null);
-  const priceRef = useRef(null);
 
   useEffect(() => {
     const fetchGig = async () => {
@@ -36,14 +41,9 @@ function GigDetails() {
         const res = await axios.get(`/gigs/${gigId}`);
         setGig(res.data.gig);
         setAttachments(res.data.attachments || []);
-        setEditedTitle(res.data.gig.title);
-        setEditedDescription(res.data.gig.description);
-        setEditedPrice(res.data.gig.price);
 
-        // If the user is the gig owner, fetch the bids
-        if (token && res.data.gig.user_id._id === userData?.userId) {
-          fetchBids();
-        }
+        // Fetch bids for the gig
+        fetchBids();
       } catch (err) {
         console.error(err);
         setError('Failed to load gig details.');
@@ -98,42 +98,14 @@ function GigDetails() {
     }
   };
 
-  const handleEditClick = () => setIsEditing(true);
-
-  const handleSave = async () => {
-    try {
-      const res = await axios.put(`/gigs/${gigId}`, {
-        title: editedTitle,
-        description: editedDescription,
-        price: editedPrice,
-      });
-      setGig(res.data.gig);
-      setIsEditing(false);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to update gig.');
-    }
-  };
-
-  const handleCancel = () => {
-    setEditedTitle(gig.title);
-    setEditedDescription(gig.description);
-    setEditedPrice(gig.price);
-    setIsEditing(false);
-  };
-
   const sanitizeDescription = (description) => ({
     __html: DOMPurify.sanitize(description),
   });
 
-  const handleInputChange = (ref, setter) => () => {
-    setter(ref.current.innerText);
-  };
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center p-6">
-        <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-blue-600" />
+        <Loader2 className="animate-spin text-blue-600" />
         <span className="ml-3 text-lg">Loading gig...</span>
       </div>
     );
@@ -148,200 +120,212 @@ function GigDetails() {
   }
 
   const isOwner = gig.user_id._id === userData?.userId;
+  const userBid = bids.find((bid) => bid.user_id._id === userData?.userId);
 
   return (
-    <div className="max-w-3xl mx-auto bg-white shadow-lg rounded-lg p-4 sm:p-6 lg:p-8 my-6">
-      {/* Gig Title Section */}
-      <div className="mb-6">
-        {isOwner && isEditing ? (
-          <div
-            ref={titleRef}
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={handleInputChange(titleRef, setEditedTitle)}
-            className="text-2xl sm:text-3xl font-bold text-gray-900 border-b pb-2 focus:outline-none"
-            aria-label="Edit gig title"
-          >
-            {editedTitle}
-          </div>
-        ) : (
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{gig.title}</h1>
-        )}
-      </div>
-
-      {/* Poster Info */}
-      <div className="flex items-center space-x-4 mb-6">
-        <Link to={`/communitycard/${gig.user_id._id}`} className="flex-shrink-0">
-          <img
-            src={gig.user_id.profile_pic_url || '/placeholder-profile.jpg'}
-            alt={gig.user_id.name}
-            className="w-14 h-14 rounded-full object-cover"
-          />
-        </Link>
-        <div>
-          <Link to={`/communitycard/${gig.user_id._id}`}>
-            <p className="text-lg font-semibold text-blue-600 hover:underline">{gig.user_id.name}</p>
-          </Link>
-          <p className="text-sm text-gray-500">Rating: {gig.user_id.rating || 'N/A'}</p>
-        </div>
-      </div>
-
-      {/* Attachments Carousel */}
-      {attachments.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-3">Attachments</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {attachments.map((att) => (
-              <img
-                key={att._id}
-                src={att.file_url}
-                alt="Attachment"
-                className="w-full h-48 object-cover rounded-lg border"
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Gig Details Section */}
+        <div className="lg:col-span-2">
+          {/* Gig Title and User Profile */}
+          <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4 sm:mb-0">{gig.title}</h1>
+            <div className="flex items-center gap-2">
+              <ProfilePicture
+                profilePicUrl={gig.user_id.profile_pic_url}
+                name={gig.user_id.name}
+                size="10"
               />
-            ))}
+              <span className="text-gray-700">
+                Posted by <span className="font-medium">{gig.user_id.name}</span>
+              </span>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Gig Description */}
-      <section className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Description</h2>
-        {isOwner && isEditing ? (
-          <div
-            ref={descriptionRef}
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={handleInputChange(descriptionRef, setEditedDescription)}
-            className="p-2 border rounded text-gray-700 focus:outline-none"
-            aria-label="Edit gig description"
-          >
-            {editedDescription}
-          </div>
-        ) : (
-          <div
-            className="prose prose-blue max-w-none"
-            dangerouslySetInnerHTML={sanitizeDescription(gig.description)}
-          />
-        )}
-      </section>
+          {/* Gig Image */}
+          {attachments.length > 0 && (
+            <div className="mb-8">
+              <img
+                src={`${import.meta.env.VITE_SERVER}${attachments[0].file_url}`}
+                alt="Gig Image"
+                className="w-full h-64 md:h-96 object-cover rounded-lg"
+              />
+            </div>
+          )}
 
-      {/* Price Section */}
-      <section className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Price</h2>
-        {isOwner && isEditing ? (
-          <div
-            ref={priceRef}
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={handleInputChange(priceRef, setEditedPrice)}
-            className="text-2xl font-bold text-green-600 focus:outline-none"
-            aria-label="Edit gig price"
-          >
-            ${editedPrice}
-          </div>
-        ) : (
-          <p className="text-2xl font-bold text-green-600">${gig.price}</p>
-        )}
-      </section>
+          {/* Gig Description */}
+          <section className="gig-details-section mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Description</h2>
+            <div
+              className="prose prose-blue max-w-none"
+              dangerouslySetInnerHTML={sanitizeDescription(gig.description)}
+            />
+          </section>
 
-      {/* Owner Edit Controls */}
-      {isOwner && (
-        <div className="flex space-x-4 mb-6">
-          {!isEditing ? (
-            <button
-              onClick={handleEditClick}
-              className="flex items-center px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            >
-              <FontAwesomeIcon icon={faEdit} className="mr-2" /> Edit Gig
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={handleSave}
-                className="flex items-center px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                <FontAwesomeIcon icon={faCheck} className="mr-2" /> Save
-              </button>
-              <button
-                onClick={handleCancel}
-                className="flex items-center px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
-              >
-                <FontAwesomeIcon icon={faTimes} className="mr-2" /> Cancel
-              </button>
-            </>
+          {/* Gig Details */}
+          <section className="gig-details-section mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Details</h2>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Tag className="text-gray-500 w-5 h-5" />
+                <span className="text-gray-600">
+                  Category: <span className="font-medium">{gig.category}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="text-gray-500 w-5 h-5" />
+                <span className="text-gray-600">
+                  Location: <span className="font-medium">{gig.zipcode}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Calendar className="text-gray-500 w-5 h-5" />
+                <span className="text-gray-600">
+                  Dates:{' '}
+                  <span className="font-medium">
+                    {gig.start_date ? new Date(gig.start_date).toLocaleDateString() : 'N/A'} -{' '}
+                    {gig.completion_date ? new Date(gig.completion_date).toLocaleDateString() : 'N/A'}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="text-gray-500 w-5 h-5" />
+                <span className="text-gray-600">
+                  Team Size: <span className="font-medium">{gig.team_size} needed</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="text-gray-500 w-5 h-5" />
+                <span className="text-gray-600">
+                  Budget:{' '}
+                  <span className="font-medium">
+                    ${gig.budget_range_min} - ${gig.budget_range_max}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Gig Tasks */}
+          {gig.gig_tasks.length > 0 && (
+            <section className="gig-details-section mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Gig Bundle</h2>
+              <div className="space-y-3">
+                {gig.gig_tasks.map((task, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Check className="text-green-500 w-5 h-5" />
+                    <span className="text-gray-600">{task}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </div>
-      )}
 
-      {/* Bids Section for Owner */}
-      {isOwner && bids.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-xl font-semibold mb-3">Bids Received</h2>
-          <ul className="space-y-4">
-            {bids.map((bid) => (
-              <li key={bid._id} className="p-4 border rounded-lg hover:shadow-md">
-                <p className="font-medium text-gray-800">{bid.user_id.name} bid ${bid.amount}</p>
-                {bid.message && <p className="text-gray-600 mt-1">{bid.message}</p>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {/* Sidebar (Bid Form and User Info) */}
+        <div className="lg:col-span-1">
+          {/* Bid Form or User's Existing Bid */}
+          {!isOwner && (
+            <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+              {userBid ? (
+                <>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Bid</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Bid Amount ($)</label>
+                      <p className="text-gray-900 font-medium">${userBid.amount}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                      <p className="text-gray-900">{userBid.message || 'No message provided.'}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Place Your Bid</h2>
+                  <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+                    {/* Proposal Price */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Proposal Price ($)</label>
+                      <input
+                        type="number"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter your bid amount"
+                        value={bidAmount}
+                        onChange={(e) => setBidAmount(e.target.value)}
+                        required
+                      />
+                    </div>
 
-      {/* Bid Placement for Non-Owners */}
-      {!isOwner && (
-        <section className="mt-8">
-          <h2 className="text-2xl font-bold mb-4">Place a Bid</h2>
-          {error && <div className="text-red-500 mb-2">{error}</div>}
-          {bidSuccess && <div className="text-green-500 mb-2">Bid placed successfully!</div>}
+                    {/* Optional Message */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Message (Optional)</label>
+                      <textarea
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-24"
+                        placeholder="Add a message to the poster..."
+                        value={bidMessage}
+                        onChange={(e) => setBidMessage(e.target.value)}
+                      />
+                    </div>
 
-          <div className="mb-4">
-            <label htmlFor="bidAmount" className="block text-sm font-medium text-gray-700 mb-1">
-              Amount ($)
-            </label>
-            <input
-              type="number"
-              id="bidAmount"
-              className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={bidAmount}
-              onChange={(e) => setBidAmount(e.target.value)}
-            />
+                    {/* Bid Button */}
+                    <button
+                      type="submit"
+                      onClick={handlePlaceBid}
+                      disabled={isPlacingBid}
+                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                      {isPlacingBid ? 'Placing Bid...' : 'Submit Bid'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* User Info */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            {/* User Profile */}
+            <div className="flex items-center gap-4 mb-6">
+              <ProfilePicture
+                profilePicUrl={gig.user_id.profile_pic_url}
+                name={gig.user_id.name}
+                size="12"
+              />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{gig.user_id.name}</h3>
+                <p className="text-gray-600">{gig.user_id.bio || 'Contractor'}</p>
+              </div>
+            </div>
+
+            {/* User Rating */}
+            <div className="flex items-center gap-2 mb-6">
+              <div className="flex items-center">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={i < (gig.user_id.rating || 0) ? 'text-yellow-400 w-5 h-5' : 'text-gray-300 w-5 h-5'}
+                    fill={i < (gig.user_id.rating || 0) ? 'currentColor' : 'none'}
+                  />
+                ))}
+              </div>
+              <span className="text-gray-600">{gig.user_id.rating || 0} ({gig.user_id.reviews?.length || 0} reviews)</span>
+            </div>
+
+            {/* Contact Button */}
+            <button className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 mb-4">
+              <MessageCircle className="inline-block w-5 h-5 mr-2" /> Contact Poster
+            </button>
+
+            {/* Share Button */}
+            <button className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+              <Share2 className="inline-block w-5 h-5 mr-2" /> Share Gig
+            </button>
           </div>
-
-          <div className="mb-4">
-            <label htmlFor="bidMessage" className="block text-sm font-medium text-gray-700 mb-1">
-              Message (Optional)
-            </label>
-            <textarea
-              id="bidMessage"
-              rows="4"
-              className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={bidMessage}
-              onChange={(e) => setBidMessage(e.target.value)}
-            />
-          </div>
-
-          <button
-            onClick={handlePlaceBid}
-            disabled={isPlacingBid}
-            className={`w-full flex justify-center items-center px-4 py-2 rounded text-white font-semibold focus:outline-none focus:ring-2 ${
-              isPlacingBid
-                ? 'bg-green-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
-            }`}
-          >
-            {isPlacingBid ? (
-              <>
-                <FontAwesomeIcon icon={faSpinner} spin className="mr-2" />
-                Placing Bid...
-              </>
-            ) : (
-              'Place Bid'
-            )}
-          </button>
-        </section>
-      )}
-    </div>
+        </div>
+      </div>
+    </main>
   );
 }
 

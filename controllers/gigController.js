@@ -6,17 +6,6 @@ const { findZipcodesWithinWithDistance } = require('../services/zipcodeService')
 
 exports.getAllGigs = async (req, res) => {
   try {
-    const categoryMapping = {
-      'Music': 1,
-      'Carpentry': 2,
-      'House Work': 3,
-      'Cleaning': 4,
-      'Photography': 5,
-      'Plumbing': 6,
-      'Electrician': 7
-      // add more as needed
-    };
-
     const {
       searchTerm = '',
       category = 'All',
@@ -24,24 +13,57 @@ exports.getAllGigs = async (req, res) => {
       page = 1,
       limit = 20,
       zipCode,
-      distance
+      distance,
+      minBudget,
+      maxBudget,
+      isVolunteer,
+      tags,
     } = req.query;
 
     const filter = {};
-    if (searchTerm) filter.$text = { $search: searchTerm };
-    if (category && category !== 'All') {
-      const categoryId = categoryMapping[category];
-      if (categoryId !== undefined) {
-        filter.category_id = categoryId;
-      }
+
+    // Search by text (title or description)
+    if (searchTerm) {
+      filter.$text = { $search: searchTerm };
     }
 
+    // Filter by category
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // Filter by tags (array of strings)
+    if (tags) {
+      filter.tags = { $in: tags.split(',') };
+    }
+
+    // Filter by volunteer status
+    if (isVolunteer !== undefined) {
+      filter.is_volunteer = isVolunteer === 'true';
+    }
+
+    // Filter by budget range
+    if (minBudget && maxBudget) {
+      filter.calculated_average_budget = {
+        $gte: parseFloat(minBudget),
+        $lte: parseFloat(maxBudget),
+      };
+    } else if (minBudget) {
+      filter.calculated_average_budget = { $gte: parseFloat(minBudget) };
+    } else if (maxBudget) {
+      filter.calculated_average_budget = { $lte: parseFloat(maxBudget) };
+    }
+
+    // Filter by zipcode and distance
     let distanceMap = {};
     if (zipCode && distance) {
       try {
-        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(zipCode, parseFloat(distance));
-        filter.zipcode = { $in: nearbyZipsWithDistance.map(nz => nz.zip) };
-        nearbyZipsWithDistance.forEach(nz => {
+        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(
+          zipCode,
+          parseFloat(distance)
+        );
+        filter.zipcode = { $in: nearbyZipsWithDistance.map((nz) => nz.zip) };
+        nearbyZipsWithDistance.forEach((nz) => {
           distanceMap[nz.zip] = nz.distance;
         });
       } catch (error) {
@@ -49,72 +71,86 @@ exports.getAllGigs = async (req, res) => {
       }
     }
 
+    // Sorting criteria
     let sortCriteria;
     if (searchTerm) {
-      sortCriteria = { score: { $meta: "textScore" } };
+      sortCriteria = { score: { $meta: 'textScore' } };
     } else {
       switch (sortBy) {
-        case 'price_asc': sortCriteria = { price: 1 }; break;
-        case 'price_desc': sortCriteria = { price: -1 }; break;
-        case 'date_asc': sortCriteria = { created_at: 1 }; break;
+        case 'price_asc':
+          sortCriteria = { calculated_average_budget: 1 };
+          break;
+        case 'price_desc':
+          sortCriteria = { calculated_average_budget: -1 };
+          break;
+        case 'date_asc':
+          sortCriteria = { created_at: 1 };
+          break;
         case 'date_desc':
-        default: sortCriteria = { created_at: -1 }; break;
+        default:
+          sortCriteria = { created_at: -1 };
+          break;
       }
     }
 
+    // Pagination
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
+    // Query gigs with filters, sorting, and pagination
     let query = Gig.find(filter)
-      .populate('user_id', 'name profile_pic_url') // Include profilePicUrl here
+      .populate('user_id', 'name profile_pic_url')
       .skip(skip)
       .limit(limitNum);
 
     if (searchTerm) {
-      query = query.sort(sortCriteria).select({ score: { $meta: "textScore" } });
+      query = query.sort(sortCriteria).select({ score: { $meta: 'textScore' } });
     } else {
       query = query.sort(sortCriteria);
     }
 
-    const gigsPromise = query;
-    const countPromise = Gig.countDocuments(filter);
-    const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
+    // Execute queries in parallel
+    const [gigs, total] = await Promise.all([
+      query.exec(),
+      Gig.countDocuments(filter),
+    ]);
 
     // Fetch attachments for gigs
-    const gigIds = gigs.map(gig => gig._id);
+    const gigIds = gigs.map((gig) => gig._id);
     const attachments = await Attachment.find({
       type: 'gig',
-      foreign_key_id: { $in: gigIds }
+      foreign_key_id: { $in: gigIds },
     });
 
     const attachmentsByGigId = {};
-    attachments.forEach(att => {
+    attachments.forEach((att) => {
       attachmentsByGigId[att.foreign_key_id] = att;
     });
 
-    const gigsWithAttachments = gigs.map(gig => {
+    // Add attachments and distance to gigs
+    const gigsWithAttachments = gigs.map((gig) => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
       if (distanceMap[gig.zipcode]) {
         gigObj.distance = distanceMap[gig.zipcode];
       }
-      console.log('Gig user data:', gigObj.user_id);
       return gigObj;
     });
 
     // Aggregate bid counts for all fetched gigs
     const bidsAgg = await Bid.aggregate([
       { $match: { gig_id: { $in: gigIds } } },
-      { $group: { _id: "$gig_id", count: { $sum: 1 } } }
+      { $group: { _id: '$gig_id', count: { $sum: 1 } } },
     ]);
 
-    let bidCountMap = {};
-    bidsAgg.forEach(b => {
+    const bidCountMap = {};
+    bidsAgg.forEach((b) => {
       bidCountMap[b._id.toString()] = b.count;
     });
 
-    gigsWithAttachments.forEach(gig => {
+    // Add bid count to gigs
+    gigsWithAttachments.forEach((gig) => {
       gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });
 
@@ -128,26 +164,75 @@ exports.getAllGigs = async (req, res) => {
 
 exports.createGig = async (req, res) => {
   try {
-    const { title, description, price, category_id, zipcode } = req.body;
+    const {
+      title,
+      description,
+      category,
+      zipcode,
+      start_date,
+      completion_date,
+      team_size,
+      gig_tasks,
+      budget_range_min,
+      budget_range_max,
+      is_volunteer,
+      tags,
+    } = req.body;
+
     const userId = req.user.userId;
 
+    // Validate budget fields if not a volunteer gig
+    if (!is_volunteer) {
+      if (!budget_range_min || !budget_range_max) {
+        return res.status(400).json({ error: 'Budget range is required for non-volunteer gigs' });
+      }
+      if (isNaN(budget_range_min) || isNaN(budget_range_max)) {
+        return res.status(400).json({ error: 'Budget range must be valid numbers' });
+      }
+      if (budget_range_min > budget_range_max) {
+        return res.status(400).json({ error: 'Budget range min must be less than or equal to max' });
+      }
+    }
+
+    // Calculate average budget if not a volunteer gig
+    const calculated_average_budget = is_volunteer
+      ? null
+      : (parseFloat(budget_range_min) + parseFloat(budget_range_max)) / 2;
+
+    // Create gig object
     const gig = new Gig({
       user_id: userId,
       title,
       description,
-      price,
-      category_id,
-      zipcode
+      category,
+      zipcode,
+      start_date: start_date || null,
+      completion_date: completion_date || null,
+      team_size: team_size || 1,
+      gig_tasks: gig_tasks || [],
+      budget_range_min: is_volunteer ? null : parseFloat(budget_range_min),
+      budget_range_max: is_volunteer ? null : parseFloat(budget_range_max),
+      calculated_average_budget,
+      is_volunteer,
+      tags: tags || [],
     });
+
+    // Save gig to database
     await gig.save();
 
+    // Handle attachment if file is uploaded
     if (req.file) {
-      await resizeImage(req.file.path);
-      await Attachment.create({
-        type: 'gig',
-        foreign_key_id: gig._id,
-        file_url: req.file.path
-      });
+      try {
+        await resizeImage(req.file.path);
+        await Attachment.create({
+          type: 'gig',
+          foreign_key_id: gig._id,
+          file_url: req.file.path,
+        });
+      } catch (error) {
+        console.error('Error handling attachment:', error);
+        return res.status(500).json({ error: 'Failed to process attachment' });
+      }
     }
 
     return res.status(201).json({ message: 'Gig created', gigId: gig._id });
@@ -156,7 +241,6 @@ exports.createGig = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
-
 
 exports.getGigDetails = async (req, res) => {
   try {
