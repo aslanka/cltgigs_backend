@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { Search, MapPin, Filter, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Package } from 'lucide-react';
 import ProfilePicture from '../components/ProfilePicture';
+import Mascot from '../assets/mascot.svg'
 
 const SkeletonCard = () => (
   <div className="animate-pulse p-4 rounded-lg bg-gray-200">
@@ -116,14 +117,12 @@ const Home = () => {
 <header className="relative bg-white border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
     {/* Branding and Title */}
-    <div className="text-center mb-8">
-      <h1 className="text-4xl sm:text-5xl font-bold text-blue-600">
-        CharlotteGigs
-      </h1>
-      <p className="mt-2 text-gray-600 max-w-md mx-auto">
-        Your local marketplace for in-person services in Charlotte
-      </p>
-    </div>
+    <div className="text-center mb-8 flex items-center justify-center">
+  <img src={Mascot} alt="Mascot" className="h-16 w-16 sm:h-20 sm:w-20 mr-4" />
+  <h1 className="text-4xl sm:text-5xl font-bold text-blue-600">
+    CharlotteGigs
+  </h1>
+</div>
 
     {/* Search and Filters Section */}
     <div className="space-y-4">
