@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
   services_offered: { type: [String], default: [] }, // Tags
   specializations: { type: [String], default: [] }, // Tags
   certifications: { type: [String], default: [] }, // File URLs
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   experience: { type: Number, default: 0 },
 
   // Availability

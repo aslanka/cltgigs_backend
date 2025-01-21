@@ -11,6 +11,18 @@ exports.getPublicProfile = async (req, res) => {
   }
 };
 
+exports.checkBlockStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = await User.findById(req.user.userId);
+    
+    const isBlocked = currentUser.blockedUsers.includes(userId);
+    res.json({ isBlocked });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 // controllers/userController.js
 exports.uploadCertifications = async (req, res) => {
   try {

@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useContext } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useContext } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,10 +12,12 @@ import { toast } from 'react-toastify';
 import ProfilePicture from '../components/ProfilePicture';
 import SkillBadge from '../components/SkillBadge';
 import RatingChart from '../components/RatingChart';
+import Attachment from '../components/Attachment';
 
 const CommunityCard = () => {
   const { userId } = useParams();
   const { token, userData } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
@@ -26,6 +28,7 @@ const CommunityCard = () => {
   const [isUploadingPortfolio, setIsUploadingPortfolio] = useState(false);
   const [newLink, setNewLink] = useState({ type: 'website', url: '' });
   const [portfolioFile, setPortfolioFile] = useState(null);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,14 +37,24 @@ const CommunityCard = () => {
           axios.get(`/users/${userId}`),
           axios.get(`/reviews/user/${userId}`)
         ]);
+        
+        if (token) {
+          const blockStatusRes = await axios.get(`/api/users/${userId}/block-status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setIsBlocked(blockStatusRes.data.isBlocked);
+        }
+
         setProfile(profileRes.data);
         setReviews(reviewsRes.data);
       } catch (err) {
         console.error(err);
+        toast.error('Failed to load profile data');
       }
     };
+    
     fetchData();
-  }, [userId]);
+  }, [userId, token]);
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
@@ -58,23 +71,16 @@ const CommunityCard = () => {
     }
 
     try {
-      const res = await axios.post(`/reviews/user/${userId}`, newReview);
+      const res = await axios.post(`/reviews/user/${userId}`, newReview, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
       setReviews([res.data, ...reviews]);
       setNewReview({ rating: 0, comment: '' });
       toast.success('Review submitted successfully!');
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Error submitting review');
-    }
-  };
-
-  const handleDeleteReview = async (reviewId) => {
-    try {
-      await axios.delete(`/reviews/${reviewId}`);
-      setReviews(reviews.filter(review => review._id !== reviewId));
-      toast.success('Review deleted successfully!');
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -85,7 +91,10 @@ const CommunityCard = () => {
     
     try {
       const res = await axios.put(`/users/${userId}/portfolio`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`
+        }
       });
       setProfile({ ...profile, portfolio: res.data.portfolio });
       setIsUploadingPortfolio(false);
@@ -98,7 +107,10 @@ const CommunityCard = () => {
 
   const handleDeletePortfolioItem = async (fileUrl) => {
     try {
-      await axios.delete(`/users/${userId}/portfolio`, { data: { fileUrl } });
+      await axios.delete(`/users/${userId}/portfolio`, { 
+        data: { fileUrl },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setProfile({ ...profile, portfolio: profile.portfolio.filter(item => item !== fileUrl) });
       toast.success('Portfolio item removed');
     } catch (err) {
@@ -107,37 +119,17 @@ const CommunityCard = () => {
     }
   };
 
-  const handleAddLink = async (e) => {
-    e.preventDefault();
-    if (!newLink.url.match(/^(http|https):\/\//)) {
-      setError("Please enter a valid URL starting with http:// or https://");
-      return;
-    }
-    
-    try {
-      const res = await axios.put(`/users/${userId}/links`, newLink);
-      setProfile({ ...profile, links: [...profile.links, res.data] });
-      setNewLink({ type: 'website', url: '' });
-      setIsEditingLinks(false);
-      toast.success('Link added successfully!');
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.error || 'Error adding link');
+  const handleContact = () => {
+    if (isBlocked) {
+      toast.error('You cannot contact this user');
+    } else {
+      navigate(`/messages/${userId}`);
     }
   };
 
-  const handleDeleteLink = async (linkId) => {
-    try {
-      await axios.delete(`/users/${userId}/links/${linkId}`);
-      setProfile({ ...profile, links: profile.links.filter(link => link._id !== linkId) });
-      toast.success('Link removed successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error removing link');
-    }
-  };
-
-  const averageRating = reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length || 0;
+  const averageRating = reviews.length > 0 
+    ? reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length 
+    : 0;
 
   if (!profile) return (
     <div className="flex justify-center items-center h-screen">
@@ -152,17 +144,19 @@ const CommunityCard = () => {
       className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8"
     >
       <div className="max-w-6xl mx-auto">
-        {/* Profile Header */}
         <div className="flex flex-col md:flex-row gap-8 items-start">
-          {/* Profile Section */}
+          {/* Left Column */}
           <div className="w-full md:w-1/3 lg:w-1/4 space-y-6">
-            <div className="bg-white rounded-2xl p-6 shadow-lg relative">
-              <ProfilePicture 
-                profilePicUrl={profile.profile_pic_url} 
-                name={profile.name}
-                size="full"
-                className="rounded-xl aspect-square object-cover shadow-inner"
-              />
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg relative">
+              <div className="flex justify-center">
+                <div className="w-32 h-32 md:w-full md:aspect-square">
+                  <ProfilePicture 
+                    profilePicUrl={profile.profile_pic_url} 
+                    name={profile.name}
+                    className="rounded-full md:rounded-xl w-full h-full object-cover shadow-inner border-4 border-white"
+                  />
+                </div>
+              </div>
               
               {userData?.userId === userId && (
                 <button 
@@ -174,22 +168,21 @@ const CommunityCard = () => {
               )}
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-col gap-3">
-              <Link 
-                to={`/messages/${userId}`}
+              <button 
+                onClick={handleContact}
                 className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-xl hover:bg-blue-700 transition-colors"
+                disabled={isBlocked}
               >
                 <MessageCircle className="w-5 h-5" />
-                <span>Contact</span>
-              </Link>
+                <span>{isBlocked ? 'Blocked' : 'Contact'}</span>
+              </button>
               <button className="flex items-center justify-center gap-2 bg-gray-100 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-200">
                 <Share2 className="w-5 h-5" />
                 <span>Share Profile</span>
               </button>
             </div>
 
-            {/* Profile Details */}
             <div className="bg-white rounded-2xl p-6 shadow-lg">
               <h3 className="text-lg font-semibold mb-4">Details</h3>
               <div className="space-y-3 text-sm">
@@ -199,7 +192,17 @@ const CommunityCard = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Briefcase className="w-5 h-5 text-gray-500" />
-                  <span>{profile.experience} years experience</span>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      value={profile.experience}
+                      onChange={(e) => setProfile({...profile, experience: e.target.value})}
+                      className="w-20 px-2 py-1 border rounded"
+                      min="0"
+                    />
+                  ) : (
+                    <span>{profile.experience} years experience</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Award className="w-5 h-5 text-gray-500" />
@@ -209,7 +212,7 @@ const CommunityCard = () => {
             </div>
           </div>
 
-          {/* Main Content */}
+          {/* Right Column */}
           <div className="flex-1 w-full space-y-8">
             {/* Profile Info */}
             <div className="bg-white rounded-2xl p-6 shadow-lg">
@@ -236,7 +239,6 @@ const CommunityCard = () => {
                 </div>
               </div>
 
-              {/* Skills & Badges */}
               <div className="flex flex-wrap gap-3 mb-6">
                 <SkillBadge 
                   icon={<Briefcase className="w-4 h-4" />} 
@@ -254,7 +256,6 @@ const CommunityCard = () => {
                 />
               </div>
 
-              {/* Bio Section */}
               {isEditing ? (
                 <textarea
                   value={profile.bio}
@@ -268,80 +269,38 @@ const CommunityCard = () => {
             </div>
 
             {/* Portfolio Section */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Portfolio</h2>
-                {userData?.userId === userId && (
-                  <button 
-                    onClick={() => setIsUploadingPortfolio(true)}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    <Plus className="w-5 h-5 text-gray-600" />
-                  </button>
-                )}
-              </div>
+<div className="bg-white rounded-2xl p-6 shadow-lg">
+  <div className="flex items-center justify-between mb-6">
+    <h2 className="text-2xl font-bold">Portfolio</h2>
+    {userData?.userId === userId && (
+      <button 
+        onClick={() => setIsUploadingPortfolio(true)}
+        className="p-2 hover:bg-gray-100 rounded-lg"
+      >
+        <Plus className="w-5 h-5 text-gray-600" />
+      </button>
+    )}
+  </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {profile.portfolio?.map((item, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={item}
-                      alt={`Portfolio item ${index + 1}`}
-                      className="w-full h-48 object-cover rounded-lg shadow-sm hover:shadow-md transition-shadow"
-                    />
-                    {userData?.userId === userId && (
-                      <button
-                        onClick={() => handleDeletePortfolioItem(item)}
-                        className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow-sm hover:bg-white"
-                      >
-                        <X className="w-5 h-5 text-red-600" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Links Section */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Links</h2>
-                {userData?.userId === userId && (
-                  <button 
-                    onClick={() => setIsEditingLinks(true)}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    <Plus className="w-5 h-5 text-gray-600" />
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {profile.links?.map((link) => (
-                  <div key={link._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      {renderLinkIcon(link.type)}
-                      <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline truncate"
-                      >
-                        {new URL(link.url).hostname}
-                      </a>
-                    </div>
-                    {userData?.userId === userId && (
-                      <button 
-                        onClick={() => handleDeleteLink(link._id)}
-                        className="p-1 hover:bg-gray-200 rounded-full"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+    {profile.portfolio?.map((item, index) => (
+      <div key={item} className="relative group">
+        <Attachment 
+          fileUrl={item}
+          className="w-full h-48 object-cover rounded-lg shadow-sm hover:shadow-md transition-transform"
+        />
+        {userData?.userId === userId && (
+          <button
+            onClick={() => handleDeletePortfolioItem(item)}
+            className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow-sm hover:bg-white"
+          >
+            <X className="w-5 h-5 text-red-600" />
+          </button>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
 
             {/* Reviews Section */}
             <div className="bg-white rounded-2xl p-6 shadow-lg">
@@ -352,7 +311,7 @@ const CommunityCard = () => {
 
               <div className="space-y-6">
                 {reviews.map((review) => (
-                  <div key={review._id} className="p-4 bg-gray-50 rounded-lg relative">
+                  <div key={review._id} className="p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-4 mb-3">
                       <ProfilePicture 
                         profilePicUrl={review.reviewer_id?.profile_pic_url} 
@@ -369,21 +328,11 @@ const CommunityCard = () => {
                       </div>
                     </div>
                     <p className="text-gray-600">{review.comment}</p>
-                    
-                    {(userData?.userId === review.reviewer_id?._id || userData?.userId === userId) && (
-                      <button
-                        onClick={() => handleDeleteReview(review._id)}
-                        className="absolute top-4 right-4 p-1 hover:bg-gray-200 rounded-full"
-                      >
-                        <X className="w-5 h-5 text-gray-500" />
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
 
-              {/* Review Form */}
-              {token && userData?.userId !== userId && (
+              {token && userData?.userId !== userId && !isBlocked && (
                 <div className="mt-8 pt-6 border-t">
                   <h3 className="text-xl font-bold mb-6">Write a Review</h3>
                   <form onSubmit={handleReviewSubmit} className="space-y-4">
@@ -406,6 +355,9 @@ const CommunityCard = () => {
                           </button>
                         ))}
                       </div>
+                      <span className="text-gray-500">
+                        {newReview.rating > 0 ? `${newReview.rating} stars` : 'Select rating'}
+                      </span>
                     </div>
 
                     <textarea
@@ -414,6 +366,7 @@ const CommunityCard = () => {
                       placeholder="Share your experience..."
                       className="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                       rows="4"
+                      required
                     />
 
                     {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -431,71 +384,8 @@ const CommunityCard = () => {
           </div>
         </div>
 
-        {/* Modals */}
+        {/* Portfolio Upload Modal */}
         <AnimatePresence>
-          {/* Add Link Modal */}
-          {isEditingLinks && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-            >
-              <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Add New Link</h3>
-                  <button
-                    onClick={() => setIsEditingLinks(false)}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleAddLink} className="space-y-4">
-                  <select
-                    value={newLink.type}
-                    onChange={(e) => setNewLink({ ...newLink, type: e.target.value })}
-                    className="w-full p-3 border border-gray-200 rounded-lg"
-                  >
-                    <option value="website">Website</option>
-                    <option value="portfolio">Portfolio</option>
-                    <option value="social">Social Media</option>
-                    <option value="other">Other</option>
-                  </select>
-
-                  <input
-                    type="url"
-                    value={newLink.url}
-                    onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
-                    placeholder="https://example.com"
-                    className="w-full p-3 border border-gray-200 rounded-lg"
-                    required
-                  />
-
-                  {error && <p className="text-red-500 text-sm">{error}</p>}
-
-                  <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      className="flex-1 bg-blue-600 text-white py-2 px-6 rounded-lg"
-                    >
-                      Add Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingLinks(false)}
-                      className="px-6 py-2 border border-gray-200 rounded-lg"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Upload Portfolio Modal */}
           {isUploadingPortfolio && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -505,7 +395,7 @@ const CommunityCard = () => {
             >
               <div className="bg-white rounded-2xl p-6 w-full max-w-md">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Upload Portfolio Image</h3>
+                  <h3 className="text-lg font-semibold">Upload Portfolio Item</h3>
                   <button
                     onClick={() => setIsUploadingPortfolio(false)}
                     className="p-2 hover:bg-gray-100 rounded-lg"
@@ -515,13 +405,21 @@ const CommunityCard = () => {
                 </div>
 
                 <form onSubmit={handlePortfolioUpload} className="space-y-4">
-                  <input
-                    type="file"
-                    onChange={(e) => setPortfolioFile(e.target.files[0])}
-                    accept="image/*"
-                    className="w-full p-3 border border-gray-200 rounded-lg"
-                    required
-                  />
+                  <label className="block">
+                    <span className="sr-only">Choose portfolio file</span>
+                    <input
+                      type="file"
+                      onChange={(e) => setPortfolioFile(e.target.files[0])}
+                      className="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-50 file:text-blue-700
+                        hover:file:bg-blue-100"
+                      accept="image/*"
+                      required
+                    />
+                  </label>
 
                   <div className="flex gap-3">
                     <button
