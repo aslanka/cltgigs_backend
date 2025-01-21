@@ -59,7 +59,22 @@ const userSchema = new mongoose.Schema({
   // Default Fields
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+
+  xp: { type: Number, default: 0 },
+  badges: { type: [String], default: [] }, // Ensure default empty array
+  rank: { type: Number },
+  completed_gigs: { type: Number, default: 0 },
+
+  redeemedRewards: [{ 
+    rewardId: mongoose.Schema.Types.ObjectId,
+    redeemedAt: Date 
+  }],
+  unlockedTiers: [String],
+
+  googleId: { type: String, unique: true, sparse: true },
+facebookId: { type: String, unique: true, sparse: true },
+appleId: { type: String, unique: true, sparse: true },
 });
 
 module.exports = mongoose.model('User', userSchema);

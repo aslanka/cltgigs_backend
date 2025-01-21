@@ -204,11 +204,14 @@ exports.getBidsForGig = async (req, res) => {
     }
 
     if (gig.user_id.toString() === userId) {
-      const bids = await Bid.find({ gig_id: gigId }).populate('user_id', 'name');
+      // Gig owner sees all bids with full user details
+      const bids = await Bid.find({ gig_id: gigId })
+        .populate('user_id', 'name profile_pic_url rating');
       return res.json(bids);
     } else {
+      // Non-owner sees only their own bid with full details
       const yourBid = await Bid.findOne({ gig_id: gigId, user_id: userId })
-        .populate('user_id', 'name');
+        .populate('user_id', 'name profile_pic_url rating');
       if (!yourBid) return res.json([]);
       return res.json([yourBid]);
     }
@@ -297,17 +300,145 @@ exports.undenyBid = async (req, res) => {
 exports.getMyBids = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const bids = await Bid.find({ user_id: userId })
-      .populate('gig_id', 'title description price user_id')
-      .populate('user_id', 'name profile_pic_url rating');
+    const bids = await Bid.find({ 
+      user_id: userId,
+      gig_id: { $exists: true } // Add this filter
+    })
+    .populate({
+      path: 'gig_id',
+      select: 'title description price user_id',
+      match: { _id: { $exists: true } } // Ensure gig exists
+    })
+    .populate('user_id', 'name profile_pic_url rating')
+    .exec();
 
-    res.json(bids);
+    // Filter out bids where gig_id was populated as null
+    const validBids = bids.filter(bid => bid.gig_id !== null);
+    
+    res.json(validBids);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 };
 
+// Add to bidController.js
+exports.deleteBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    
+    const bid = await Bid.findById(bidId);
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only bid creator can delete' });
+    }
+
+    await Bid.deleteOne({ _id: bidId });
+    res.json({ message: 'Bid deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateBidStatus = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.userId;
+
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can update status' });
+    }
+
+    bid.status = status; // Add status field to Bid model
+    await bid.save();
+    
+    res.json({ message: 'Bid status updated', bid });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+--- controllers\bookmarkController.js ---
+const Bookmark = require('../models/Bookmark');
+const Gig = require('../models/Gig');
+
+exports.checkBookmarkStatus = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const bookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    res.json({ isBookmarked: !!bookmark });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    // Check if gig exists
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const existingBookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    if (existingBookmark) {
+      await Bookmark.deleteOne({ _id: existingBookmark._id });
+      return res.json({ isBookmarked: false });
+    }
+
+    const newBookmark = new Bookmark({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    await newBookmark.save();
+    res.json({ isBookmarked: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getUserBookmarks = async (req, res) => {
+  try {
+    const bookmarks = await Bookmark.find({ user_id: req.user.userId })
+      .populate({
+        path: 'gig_id',
+        populate: {
+          path: 'user_id',
+          select: 'name profile_pic_url'
+        }
+      })
+      .sort({ created_at: -1 });
+
+    res.json(bookmarks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
 
 --- controllers\gigController.js ---
 const Gig = require('../models/Gig');
@@ -318,17 +449,6 @@ const { findZipcodesWithinWithDistance } = require('../services/zipcodeService')
 
 exports.getAllGigs = async (req, res) => {
   try {
-    const categoryMapping = {
-      'Music': 1,
-      'Carpentry': 2,
-      'House Work': 3,
-      'Cleaning': 4,
-      'Photography': 5,
-      'Plumbing': 6,
-      'Electrician': 7
-      // add more as needed
-    };
-
     const {
       searchTerm = '',
       category = 'All',
@@ -336,24 +456,57 @@ exports.getAllGigs = async (req, res) => {
       page = 1,
       limit = 20,
       zipCode,
-      distance
+      distance,
+      minBudget,
+      maxBudget,
+      isVolunteer,
+      tags,
     } = req.query;
 
     const filter = {};
-    if (searchTerm) filter.$text = { $search: searchTerm };
-    if (category && category !== 'All') {
-      const categoryId = categoryMapping[category];
-      if (categoryId !== undefined) {
-        filter.category_id = categoryId;
-      }
+
+    // Search by text (title or description)
+    if (searchTerm) {
+      filter.$text = { $search: searchTerm };
     }
 
+    // Filter by category
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // Filter by tags (array of strings)
+    if (tags) {
+      filter.tags = { $in: tags.split(',') };
+    }
+
+    // Filter by volunteer status
+    if (isVolunteer !== undefined) {
+      filter.is_volunteer = isVolunteer === 'true';
+    }
+
+    // Filter by budget range
+    if (minBudget && maxBudget) {
+      filter.calculated_average_budget = {
+        $gte: parseFloat(minBudget),
+        $lte: parseFloat(maxBudget),
+      };
+    } else if (minBudget) {
+      filter.calculated_average_budget = { $gte: parseFloat(minBudget) };
+    } else if (maxBudget) {
+      filter.calculated_average_budget = { $lte: parseFloat(maxBudget) };
+    }
+
+    // Filter by zipcode and distance
     let distanceMap = {};
     if (zipCode && distance) {
       try {
-        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(zipCode, parseFloat(distance));
-        filter.zipcode = { $in: nearbyZipsWithDistance.map(nz => nz.zip) };
-        nearbyZipsWithDistance.forEach(nz => {
+        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(
+          zipCode,
+          parseFloat(distance)
+        );
+        filter.zipcode = { $in: nearbyZipsWithDistance.map((nz) => nz.zip) };
+        nearbyZipsWithDistance.forEach((nz) => {
           distanceMap[nz.zip] = nz.distance;
         });
       } catch (error) {
@@ -361,51 +514,65 @@ exports.getAllGigs = async (req, res) => {
       }
     }
 
+    // Sorting criteria
     let sortCriteria;
     if (searchTerm) {
-      sortCriteria = { score: { $meta: "textScore" } };
+      sortCriteria = { score: { $meta: 'textScore' } };
     } else {
       switch (sortBy) {
-        case 'price_asc': sortCriteria = { price: 1 }; break;
-        case 'price_desc': sortCriteria = { price: -1 }; break;
-        case 'date_asc': sortCriteria = { created_at: 1 }; break;
+        case 'price_asc':
+          sortCriteria = { calculated_average_budget: 1 };
+          break;
+        case 'price_desc':
+          sortCriteria = { calculated_average_budget: -1 };
+          break;
+        case 'date_asc':
+          sortCriteria = { created_at: 1 };
+          break;
         case 'date_desc':
-        default: sortCriteria = { created_at: -1 }; break;
+        default:
+          sortCriteria = { created_at: -1 };
+          break;
       }
     }
 
+    // Pagination
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
+    // Query gigs with filters, sorting, and pagination
     let query = Gig.find(filter)
-      .populate('user_id', 'name')
+      .populate('user_id', 'name profile_pic_url')
       .skip(skip)
       .limit(limitNum);
 
     if (searchTerm) {
-      query = query.sort(sortCriteria).select({ score: { $meta: "textScore" } });
+      query = query.sort(sortCriteria).select({ score: { $meta: 'textScore' } });
     } else {
       query = query.sort(sortCriteria);
     }
 
-    const gigsPromise = query;
-    const countPromise = Gig.countDocuments(filter);
-    const [gigs, total] = await Promise.all([gigsPromise, countPromise]);
+    // Execute queries in parallel
+    const [gigs, total] = await Promise.all([
+      query.exec(),
+      Gig.countDocuments(filter),
+    ]);
 
     // Fetch attachments for gigs
-    const gigIds = gigs.map(gig => gig._id);
+    const gigIds = gigs.map((gig) => gig._id);
     const attachments = await Attachment.find({
       type: 'gig',
-      foreign_key_id: { $in: gigIds }
+      foreign_key_id: { $in: gigIds },
     });
 
     const attachmentsByGigId = {};
-    attachments.forEach(att => {
+    attachments.forEach((att) => {
       attachmentsByGigId[att.foreign_key_id] = att;
     });
 
-    const gigsWithAttachments = gigs.map(gig => {
+    // Add attachments and distance to gigs
+    const gigsWithAttachments = gigs.map((gig) => {
       const gigObj = gig.toObject();
       gigObj.attachment = attachmentsByGigId[gig._id] || null;
       if (distanceMap[gig.zipcode]) {
@@ -417,15 +584,16 @@ exports.getAllGigs = async (req, res) => {
     // Aggregate bid counts for all fetched gigs
     const bidsAgg = await Bid.aggregate([
       { $match: { gig_id: { $in: gigIds } } },
-      { $group: { _id: "$gig_id", count: { $sum: 1 } } }
+      { $group: { _id: '$gig_id', count: { $sum: 1 } } },
     ]);
 
-    let bidCountMap = {};
-    bidsAgg.forEach(b => {
+    const bidCountMap = {};
+    bidsAgg.forEach((b) => {
       bidCountMap[b._id.toString()] = b.count;
     });
 
-    gigsWithAttachments.forEach(gig => {
+    // Add bid count to gigs
+    gigsWithAttachments.forEach((gig) => {
       gig.bidCount = bidCountMap[gig._id.toString()] || 0;
     });
 
@@ -439,26 +607,91 @@ exports.getAllGigs = async (req, res) => {
 
 exports.createGig = async (req, res) => {
   try {
-    const { title, description, price, category_id, zipcode } = req.body;
+    const {
+      title,
+      description,
+      category,
+      zipcode,
+      start_date,
+      completion_date,
+      team_size,
+      gig_tasks: gigTasksRaw,
+      budget_range_min,
+      budget_range_max,
+      is_volunteer: isVolunteerString,
+      tags,
+    } = req.body;
+
     const userId = req.user.userId;
 
+    // Convert string boolean to actual boolean
+    const is_volunteer = isVolunteerString === 'true';
+
+    // Parse gig tasks from JSON string
+    let gig_tasks = [];
+    if (gigTasksRaw) {
+      try {
+        gig_tasks = JSON.parse(gigTasksRaw);
+        if (!Array.isArray(gig_tasks)) {
+          return res.status(400).json({ error: 'Gig tasks must be an array' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid gig tasks format' });
+      }
+    }
+
+    // Validate budget fields if not a volunteer gig
+    if (!is_volunteer) {
+      if (!budget_range_min || !budget_range_max) {
+        return res.status(400).json({ error: 'Budget range is required for non-volunteer gigs' });
+      }
+      if (isNaN(budget_range_min) || isNaN(budget_range_max)) {
+        return res.status(400).json({ error: 'Budget range must be valid numbers' });
+      }
+      if (parseFloat(budget_range_min) > parseFloat(budget_range_max)) {
+        return res.status(400).json({ error: 'Budget range min must be less than or equal to max' });
+      }
+    }
+
+    // Calculate average budget if not a volunteer gig
+    const calculated_average_budget = is_volunteer
+      ? null
+      : (parseFloat(budget_range_min) + parseFloat(budget_range_max)) / 2;
+
+    // Create gig object
     const gig = new Gig({
       user_id: userId,
       title,
       description,
-      price,
-      category_id,
-      zipcode
+      category,
+      zipcode,
+      start_date: start_date || null,
+      completion_date: completion_date || null,
+      team_size: team_size || 1,
+      gig_tasks,
+      budget_range_min: is_volunteer ? null : parseFloat(budget_range_min),
+      budget_range_max: is_volunteer ? null : parseFloat(budget_range_max),
+      calculated_average_budget,
+      is_volunteer,
+      tags: tags ? tags.split(',') : [],
     });
+
+    // Save gig to database
     await gig.save();
 
+    // Handle attachment if file is uploaded
     if (req.file) {
-      await resizeImage(req.file.path);
-      await Attachment.create({
-        type: 'gig',
-        foreign_key_id: gig._id,
-        file_url: req.file.path
-      });
+      try {
+        await resizeImage(req.file.path);
+        await Attachment.create({
+          type: 'gig',
+          foreign_key_id: gig._id,
+          file_url: req.file.path,
+        });
+      } catch (error) {
+        console.error('Error handling attachment:', error);
+        return res.status(500).json({ error: 'Failed to process attachment' });
+      }
     }
 
     return res.status(201).json({ message: 'Gig created', gigId: gig._id });
@@ -467,7 +700,6 @@ exports.createGig = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
-
 
 exports.getGigDetails = async (req, res) => {
   try {
@@ -499,29 +731,74 @@ exports.getMyGigs = async (req, res) => {
 exports.updateGig = async (req, res) => {
   try {
     const { gigId } = req.params;
-    const { title, description, price } = req.body;
     const userId = req.user.userId;
 
     const gig = await Gig.findById(gigId);
-    if (!gig) {
-      return res.status(404).json({ error: 'Gig not found' });
-    }
-    if (gig.user_id.toString() !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    if (gig.user_id.toString() !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+    // Handle volunteer status first
+    const isVolunteer = req.body.is_volunteer === 'true';
+    gig.is_volunteer = isVolunteer;
+
+    // Reset budget fields for volunteer gigs
+    if (isVolunteer) {
+      gig.budget_range_min = null;
+      gig.budget_range_max = null;
+      gig.calculated_average_budget = null;
+    } else {
+      // Validate and set budget for paid gigs
+      const min = parseFloat(req.body.budget_range_min);
+      const max = parseFloat(req.body.budget_range_max);
+
+      if (isNaN(min) || isNaN(max) || min < 0 || max < 0 || min > max) {
+        return res.status(400).json({ error: 'Invalid budget range' });
+      }
+
+      gig.budget_range_min = min;
+      gig.budget_range_max = max;
+      gig.calculated_average_budget = (min + max) / 2;
     }
 
-    gig.title = title || gig.title;
-    gig.description = description || gig.description;
-    gig.price = price || gig.price;
-    await gig.save();
+    // Update other fields
+    gig.title = req.body.title || gig.title;
+    gig.description = req.body.description || gig.description;
+    gig.category = req.body.category || gig.category;
+    gig.zipcode = req.body.zipcode || gig.zipcode;
+    gig.start_date = req.body.start_date || null;
+    gig.completion_date = req.body.completion_date || null;
+    gig.team_size = parseInt(req.body.team_size) || 1;
 
-    return res.json({ message: 'Gig updated', gig });
+    // Handle tasks
+    try {
+      gig.gig_tasks = req.body.gig_tasks ? JSON.parse(req.body.gig_tasks) : [];
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid tasks format' });
+    }
+
+    // Handle tags
+    gig.tags = req.body.tags ? 
+      req.body.tags.split(',').map(t => t.trim()).filter(t => t) : 
+      [];
+
+    // Handle file upload
+    if (req.file) {
+      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+      await Attachment.create({
+        type: 'gig',
+        foreign_key_id: gigId,
+        file_url: req.file.path
+      });
+    }
+
+    const updatedGig = await gig.save();
+    res.json({ message: 'Gig updated successfully', gig: updatedGig });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Update error:', err);
+    res.status(500).json({ error: 'Server error during update' });
   }
 };
-
 exports.deleteGig = async (req, res) => {
   try {
     const { gigId } = req.params;
@@ -547,6 +824,41 @@ exports.deleteGig = async (req, res) => {
 };
 
 
+
+--- controllers\leaderboardController.js ---
+const User = require('../models/User'); // Add this import at the top
+
+// controllers/leaderboardController.js
+exports.getLeaderboard = async (req, res) => {
+    try {
+      const { timeframe } = req.query;
+      
+      let dateFilter = {};
+      if (timeframe === 'weekly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
+      } else if (timeframe === 'monthly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
+      }
+  
+      const users = await User.aggregate([
+        { $match: dateFilter },
+        { $sort: { xp: -1 } },
+        { $project: { name: 1, profile_pic_url: 1, xp: 1, badges: 1 } },
+        { $limit: 100 }
+      ]);
+  
+      // Add ranks
+      const rankedUsers = users.map((user, index) => ({
+        ...user,
+        rank: index + 1
+      }));
+  
+      res.json(rankedUsers);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  };
 
 --- controllers\messageController.js ---
 // controllers/messageController.js
@@ -584,6 +896,9 @@ exports.getAllConversationsForUser = async (req, res) => {
         : conv.gig_owner_id;
       const otherUser = await User.findById(otherUserId).lean();
       conv.otherUserName = otherUser?.name || 'Unknown User';
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
+      conv.otherUserId = otherUserId.toString();
+      conv.gigId = conv.gig_id.toString();
       conv.otherUserPic = otherUser?.profile_pic_url || '';
 
       // Mark if conversation is blocked for the current user
@@ -651,7 +966,7 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
-    // Fetch the sender's name
+    // Fetch the sender's details
     const sender = await User.findById(userId);
     if (!sender) {
       return res.status(404).json({ error: 'Sender not found' });
@@ -687,15 +1002,18 @@ exports.sendMessage = async (req, res) => {
     });
     await newMsg.save();
 
-    // Emit the new message to the conversation room
+    // Emit the new message to the conversation room with sender details
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
-      _id: newMsg._id,
-      conversation_id: newMsg.conversation_id,
-      sender_id: userId,
+      _id: newMsg._id.toString(),
+      conversation_id: newMsg.conversation_id.toString(),
+      sender_id: newMsg.sender_id.toString(),
       content: newMsg.content,
       file_url: newMsg.file_url,
       created_at: newMsg.created_at,
+      // Additional sender info
+      sender_name: sender.name,
+      sender_pic: sender.profile_pic_url,
     });
 
     // Determine the recipient of the message
@@ -707,8 +1025,8 @@ exports.sendMessage = async (req, res) => {
     const notification = new Notification({
       user_id: recipientId,
       type: 'message',
-      message: `You have a new message from ${sender.name}`, // Use the sender's name
-      link: `/messages/${conversationId}`, // Add the link to the conversation
+      message: `You have a new message from ${sender.name}`,
+      link: `/messages/${conversationId}`,
     });
     await notification.save();
 
@@ -721,6 +1039,7 @@ exports.sendMessage = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 // In the deleteMessage function
 exports.deleteMessage = async (req, res) => {
@@ -817,6 +1136,16 @@ exports.unblockConversation = async (req, res) => {
     res.json({ message: 'Conversation unblocked' });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    await Conversation.findByIdAndDelete(conversationId);
+    res.json({ message: 'Conversation deleted' });
+  } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 };
@@ -1196,11 +1525,44 @@ const bidSchema = new mongoose.Schema({
   accepted: { type: Boolean, default: false },
   rejected: { type: Boolean, default: false },
   conversation_id: { type: mongoose.Schema.Types.ObjectId }, // Added field
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected'],
+    default: 'pending'
+  }
 });
+
+bidSchema.index({ gig_id: 1, user_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('Bid', bidSchema);
 
+
+
+--- models\Bookmark.js ---
+const mongoose = require('mongoose');
+
+const bookmarkSchema = new mongoose.Schema({
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  gig_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Gig',
+    required: true
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Add compound index to ensure unique bookmarks
+bookmarkSchema.index({ user_id: 1, gig_id: 1 }, { unique: true });
+
+module.exports = mongoose.model('Bookmark', bookmarkSchema);
 
 --- models\Conversation.js ---
 const mongoose = require('mongoose');
@@ -1227,16 +1589,37 @@ const gigSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
-  price: { type: Number, required: true },
-  category_id: { type: Number }, // optional
-  zipcode: { type: String },     // optional zipcode field
-  created_at: { type: Date, default: Date.now }
+  category: { type: String, required: true }, // Updated to string for flexibility
+  zipcode: { type: String, required: true }, // Required zipcode
+  start_date: { type: Date }, // Optional start date
+  completion_date: { type: Date }, // Optional completion date
+  created_at: { type: Date, default: Date.now }, // Automatically set
+  team_size: { type: Number, default: 1 }, // Default team size is 1
+  gig_tasks: { type: [String], default: [] }, // Array of tasks
+  budget_range_min: { type: Number }, // Required if not volunteer
+  budget_range_max: { type: Number }, // Required if not volunteer
+  calculated_average_budget: { 
+    type: Number,
+    default: null,
+    validate: {
+      validator: function(v) {
+        // Allow null for volunteer gigs and numbers for paid gigs
+        return v === null || Number.isFinite(v);
+      },
+      message: '{VALUE} is not a valid number or null'
+    }
+  },
+  is_volunteer: { type: Boolean, default: false }, // Default to false
+  tags: { type: [String], default: [] }, // Array of tags
+  
 });
-// In your Gig schema (models/Gig.js)
+
+// Index for zipcode and created_at for faster queries
 gigSchema.index({ zipcode: 1 });
+gigSchema.index({ created_at: -1 });
+gigSchema.index({ category: 1, is_volunteer: 1, calculated_average_budget: 1 });
 
 module.exports = mongoose.model('Gig', gigSchema);
-
 
 --- models\Message.js ---
 const mongoose = require('mongoose');
@@ -1381,7 +1764,22 @@ const userSchema = new mongoose.Schema({
   // Default Fields
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+
+  xp: { type: Number, default: 0 },
+  badges: { type: [String], default: [] }, // Ensure default empty array
+  rank: { type: Number },
+  completed_gigs: { type: Number, default: 0 },
+
+  redeemedRewards: [{ 
+    rewardId: mongoose.Schema.Types.ObjectId,
+    redeemedAt: Date 
+  }],
+  unlockedTiers: [String],
+
+  googleId: { type: String, unique: true, sparse: true },
+facebookId: { type: String, unique: true, sparse: true },
+appleId: { type: String, unique: true, sparse: true },
 });
 
 module.exports = mongoose.model('User', userSchema);
@@ -1447,32 +1845,44 @@ const generateToken = (user) => {
   );
 };
 
-// Google OAuth routes
+
+router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
+
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Optional: Force account selection
+  })
 );
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false }),
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=google`
+  }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Google login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
-// Apple OAuth routes
-// For Apple, you typically use a POST request because Apple sends a JWT to your callback URL.
-// Adjust these routes based on how your front-end interacts with Apple Sign In.
 router.post(
   '/apple',
   passport.authenticate('apple', { session: false }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Apple login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
@@ -1480,27 +1890,49 @@ module.exports = router;
 
 
 --- routes\bidRoutes.js ---
+// routes/bidRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { createBid, getBidsForGig, acceptBid, // Ensure this is imported
-    denyBid,   // Ensure this is imported
-    getMyBids, undenyBid} = require('../controllers/bidController');
+const { 
+  createBid, 
+  getBidsForGig, 
+  acceptBid,
+  denyBid,
+  getMyBids,  // MOVE THIS ROUTE UP
+  undenyBid,
+  deleteBid,
+  updateBidStatus,
+} = require('../controllers/bidController');
 
-// Place a bid (must be logged in)
+// Correct order of routes
 router.post('/', authenticate, createBid);
-
-// Get bids for a gig (the gig owner sees all, non-owner sees only their own)
-router.get('/:gigId', authenticate, getBidsForGig);
-
+router.get('/my', authenticate, getMyBids); // This should come FIRST
+router.get('/:gigId', authenticate, getBidsForGig); // This comes AFTER
 router.post('/:bidId/accept', authenticate, acceptBid);
 router.post('/:bidId/deny', authenticate, denyBid);
-router.get('/my', authenticate, getMyBids);
 router.post('/:bidId/undeny', authenticate, undenyBid);
-
+// Add to bidRoutes.js
+router.delete('/:bidId', authenticate, deleteBid);
+router.patch('/:bidId/status', authenticate, updateBidStatus);
 
 module.exports = router;
 
+--- routes\bookmarkRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  checkBookmarkStatus,
+  toggleBookmark,
+  getUserBookmarks
+} = require('../controllers/bookmarkController');
+
+router.get('/check/:gigId', authenticate, checkBookmarkStatus);
+router.post('/toggle/:gigId', authenticate, toggleBookmark);
+router.get('/user', authenticate, getUserBookmarks);
+
+module.exports = router;
 
 --- routes\gigRoutes.js ---
 // gigRoutes.js (updated)
@@ -1538,6 +1970,16 @@ router.delete('/:gigId', authenticate, deleteGig);
 module.exports = router;
 
 
+--- routes\leaderboardRoutes.js ---
+// routes/leaderboardRoutes.js
+const express = require('express');
+const router = express.Router();
+const { getLeaderboard } = require('../controllers/leaderboardController');
+
+router.get('/', getLeaderboard);
+
+module.exports = router;
+
 --- routes\messageRoutes.js ---
 // routes/messageRoutes.js
 const express = require('express');
@@ -1548,6 +1990,7 @@ const {
   getConversationMessages,
   sendMessage,
   deleteMessage,
+  deleteConversation,
   reportMessage,
   blockConversation,
   unblockConversation
@@ -1567,6 +2010,8 @@ router.delete('/:messageId', authenticate, deleteMessage);
 router.post('/:messageId/report', authenticate, reportMessage);
 router.post('/:conversationId/block', authenticate, blockConversation);
 router.post('/:conversationId/unblock', authenticate, unblockConversation);
+// In messageRoutes.js
+router.delete('/conversation/:conversationId', authenticate, deleteConversation);
 
 
 module.exports = router;
@@ -1682,6 +2127,7 @@ module.exports = router;
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const AppleStrategy = require('passport-apple').Strategy;
+const FacebookStrategy = require('passport-facebook').Strategy;
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
@@ -1703,22 +2149,59 @@ passport.use(
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: process.env.GOOGLE_CALLBACK_URL,
+      proxy: true // Add this if using reverse proxy/load balancer
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Find or create user
-        let user = await User.findOne({ googleId: profile.id });
+        let user = await User.findOne({ 
+          $or: [
+            { googleId: profile.id },
+            { email: profile.emails[0].value }
+          ]
+        });
+
         if (!user) {
-          // If email exists with another method, update record; otherwise create new.
+          user = new User({
+            name: profile.displayName,
+            email: profile.emails[0].value,
+            googleId: profile.id,
+            password: ''
+          });
+          await user.save();
+        } else if (!user.googleId) {
+          user.googleId = profile.id;
+          await user.save();
+        }
+
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  )
+);
+
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+      profileFields: ['id', 'emails', 'name']
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ facebookId: profile.id });
+        if (!user) {
           user = await User.findOne({ email: profile.emails[0].value });
           if (user) {
-            user.googleId = profile.id;
+            user.facebookId = profile.id;
           } else {
             user = new User({
-              name: profile.displayName,
+              name: `${profile.name.givenName} ${profile.name.familyName}`,
               email: profile.emails[0].value,
-              googleId: profile.id,
-              password: '', // no password since it's OAuth
+              facebookId: profile.id,
+              password: ''
             });
           }
           await user.save();
@@ -1850,14 +2333,19 @@ let io;
 function init(server) {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_ORIGIN,// Allow your frontend origin
-      methods: ['GET', 'POST'],        // Allowed HTTP methods
-      credentials: true,               // Allow credentials (if needed)
+      origin: process.env.FRONTEND_ORIGIN,
+      methods: ['GET', 'POST'],
+      credentials: true
     },
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+      skipMiddlewares: true
+    }
   });
 
-  // Optional: Add event listeners for debugging
+  // Add ping/pong handling
   io.on('connection', (socket) => {
+    socket.on('ping', (cb) => cb());
     console.log('A user connected:', socket.id);
 
     socket.on('disconnect', () => {
@@ -1904,6 +2392,8 @@ const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const bookmarkRoutes = require('./routes/bookmarkRoutes');
 
 // Initialize Express app
 const app = express();
@@ -1931,13 +2421,22 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 };
 
 // Middleware
 app.use(cors(corsOptions));
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://*.golockedin.com"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true }
+}));
 app.use(xss());
 app.use(express.json());
 
@@ -1986,6 +2485,8 @@ app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/bookmarks', bookmarkRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

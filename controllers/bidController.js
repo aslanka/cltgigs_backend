@@ -83,11 +83,14 @@ exports.getBidsForGig = async (req, res) => {
     }
 
     if (gig.user_id.toString() === userId) {
-      const bids = await Bid.find({ gig_id: gigId }).populate('user_id', 'name');
+      // Gig owner sees all bids with full user details
+      const bids = await Bid.find({ gig_id: gigId })
+        .populate('user_id', 'name profile_pic_url rating');
       return res.json(bids);
     } else {
+      // Non-owner sees only their own bid with full details
       const yourBid = await Bid.findOne({ gig_id: gigId, user_id: userId })
-        .populate('user_id', 'name');
+        .populate('user_id', 'name profile_pic_url rating');
       if (!yourBid) return res.json([]);
       return res.json([yourBid]);
     }
@@ -176,11 +179,66 @@ exports.undenyBid = async (req, res) => {
 exports.getMyBids = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const bids = await Bid.find({ user_id: userId })
-      .populate('gig_id', 'title description price user_id')
-      .populate('user_id', 'name profile_pic_url rating');
+    const bids = await Bid.find({ 
+      user_id: userId,
+      gig_id: { $exists: true } // Add this filter
+    })
+    .populate({
+      path: 'gig_id',
+      select: 'title description price user_id',
+      match: { _id: { $exists: true } } // Ensure gig exists
+    })
+    .populate('user_id', 'name profile_pic_url rating')
+    .exec();
 
-    res.json(bids);
+    // Filter out bids where gig_id was populated as null
+    const validBids = bids.filter(bid => bid.gig_id !== null);
+    
+    res.json(validBids);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Add to bidController.js
+exports.deleteBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    
+    const bid = await Bid.findById(bidId);
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only bid creator can delete' });
+    }
+
+    await Bid.deleteOne({ _id: bidId });
+    res.json({ message: 'Bid deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateBidStatus = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.userId;
+
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can update status' });
+    }
+
+    bid.status = status; // Add status field to Bid model
+    await bid.save();
+    
+    res.json({ message: 'Bid status updated', bid });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

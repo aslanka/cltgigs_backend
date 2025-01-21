@@ -7,6 +7,7 @@ const {
   getConversationMessages,
   sendMessage,
   deleteMessage,
+  deleteConversation,
   reportMessage,
   blockConversation,
   unblockConversation
@@ -26,6 +27,8 @@ router.delete('/:messageId', authenticate, deleteMessage);
 router.post('/:messageId/report', authenticate, reportMessage);
 router.post('/:conversationId/block', authenticate, blockConversation);
 router.post('/:conversationId/unblock', authenticate, unblockConversation);
+// In messageRoutes.js
+router.delete('/conversation/:conversationId', authenticate, deleteConversation);
 
 
 module.exports = router;

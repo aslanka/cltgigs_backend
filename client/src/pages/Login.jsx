@@ -1,14 +1,24 @@
 // Login.jsx
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
 function Login() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState(null);
+  const [searchParams] = useSearchParams();
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) {
+      login(token);
+      navigate('/');
+    }
+  }, [searchParams, login, navigate]);
 
   const handleSubmit = async () => {
     try {
@@ -30,6 +40,13 @@ function Login() {
     window.location.href = '/auth/apple'; // Adjust the URL according to your backend setup
   };
 
+  const handleFacebookLogin = () => {
+    window.location.href = '/auth/facebook';
+  };
+  
+  // Add Facebook button in the return statement
+  
+
   return (
     <div className="max-w-md mx-auto bg-white p-8 rounded shadow-lg flex flex-col items-center space-y-4">
       <h2 className="text-3xl font-bold mb-6 text-gray-900">Login</h2>
@@ -42,6 +59,14 @@ function Login() {
           Sign in with Google
         </button>
       </div>
+      <div className="w-full">
+    <button
+      onClick={handleFacebookLogin}
+      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
+    >
+      Sign in with Facebook
+    </button>
+  </div>
       <div className="w-full">
         <button
           onClick={handleAppleLogin}

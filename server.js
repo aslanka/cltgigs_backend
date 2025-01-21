@@ -21,6 +21,8 @@ const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const bookmarkRoutes = require('./routes/bookmarkRoutes');
 
 // Initialize Express app
 const app = express();
@@ -48,13 +50,22 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 };
 
 // Middleware
 app.use(cors(corsOptions));
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://*.golockedin.com"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true }
+}));
 app.use(xss());
 app.use(express.json());
 
@@ -103,6 +114,8 @@ app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/bookmarks', bookmarkRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

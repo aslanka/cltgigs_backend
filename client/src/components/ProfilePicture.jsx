@@ -1,18 +1,28 @@
 import React from 'react';
 import { User } from 'lucide-react'; // Import the User icon
 
-const ProfilePicture = ({ profilePicUrl, name, size = '10', className = '' }) => {
+const ProfilePicture = ({ profilePicUrl, profile_pic_url, name, size = '10', className = '' }) => {
   // Ensure the size is a valid Tailwind class
   const sizeClass = `w-${size} h-${size}`;
 
+  // Use profilePicUrl if available, otherwise fall back to profile_pic_url
+  const imageUrl = profilePicUrl || profile_pic_url;
+
+  console.log('ProfilePicture props:', { profilePicUrl, profile_pic_url, name, size, className }); // Debugging
+
   return (
     <div className={`flex items-center justify-center ${className}`}>
-      {profilePicUrl ? (
+      {imageUrl ? (
         <img
           crossOrigin="anonymous"
-          src={`${import.meta.env.VITE_SERVER}${profilePicUrl}`}
+          src={`${import.meta.env.VITE_SERVER}${imageUrl}`}
           alt="Profile"
           className={`${sizeClass} rounded-full object-cover`}
+          onError={(e) => {
+            e.target.onerror = null; // Prevent infinite loop
+            e.target.src = ''; // Clear the src to show the fallback
+            console.error('Failed to load profile picture:', imageUrl); // Debugging
+          }}
         />
       ) : (
         <div
