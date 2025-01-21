@@ -1,7 +1,7 @@
 {
     ".\\.env": {
-        "hash": "f9f4cb7aa927a7df87ea38c342b29173ca05fef682313a61086c79452e6fcdcb",
-        "summary": "This .env file contains configuration settings for a server, including environment variables for setting up a server port, JWT secret, MongoDB URI, frontend origin, and OAuth credentials for Google and Apple.",
+        "hash": "680cfd0137489b07bf6d3e7b0a5345133b29b0bdea3dd123256bccb0704c2259",
+        "summary": "This .env file contains configuration settings for a server, including environment variables for server port, JWT secret, MongoDB URI, frontend origin, and OAuth credentials for Google, Apple, and Facebook.",
         "functions": [],
         "variables": [
             "SERVER_PORT",
@@ -15,13 +15,16 @@
             "APPLE_TEAM_ID",
             "APPLE_KEY_ID",
             "APPLE_PRIVATE_KEY",
-            "APPLE_CALLBACK_URL"
+            "APPLE_CALLBACK_URL",
+            "FACEBOOK_APP_ID",
+            "FACEBOOK_APP_SECRET",
+            "FACEBOOK_CALLBACK_URL"
         ],
-        "language": "Environment variables configuration (dotenv)"
+        "language": "dotenv"
     },
     ".\\.env.dev": {
-        "hash": "f9f4cb7aa927a7df87ea38c342b29173ca05fef682313a61086c79452e6fcdcb",
-        "summary": "This file contains environment variables for a development server, including configuration for server port, JWT secret, MongoDB URI, frontend origin, and OAuth settings for Google and Apple.",
+        "hash": "371c209ee620c2b295bdbfdc32da636f7604658f7970b50eddd2f884f6b1e887",
+        "summary": "This is a configuration file named .env.dev used for setting up environment variables in a development environment. It contains settings for server port, JWT secret, MongoDB URI, frontend origin, and OAuth credentials for Google and Apple.",
         "functions": [],
         "variables": [
             "SERVER_PORT",
@@ -37,14 +40,14 @@
             "APPLE_PRIVATE_KEY",
             "APPLE_CALLBACK_URL"
         ],
-        "language": "None"
+        "language": "Configuration file (dotenv)"
     },
     ".\\.gitignore": {
-        "hash": "556c6bdf70bf7ec66e4ae9cf26b158defc11d55cc326d2879009f976f12405b9",
-        "summary": "The .gitignore file is used to specify intentionally untracked files that Git should ignore. It includes various types of log files, build directories, environment configuration files, editor-specific files, and temporary files.",
+        "hash": "a77da4a14062400486f9cb04a8528d0725fb39c92145997661507b9c1d511463",
+        "summary": "The .gitignore file contains patterns for files and directories that Git should ignore, such as logs, build artifacts, environment configuration files, editor-specific directories, and temporary files.",
         "functions": [],
         "variables": [],
-        "language": "Git Configuration"
+        "language": "plaintext"
     },
     ".\\docker-compose.yml": {
         "hash": "491f5b4fe45b7c114e737c5557d02d9a428519ae2269bf88d16b391ae67fa7fe",
@@ -59,42 +62,22 @@
         "language": "YAML"
     },
     ".\\package-lock.json": {
-        "hash": "37d2886a1665e44206ce68f0ceff781537a9996523e7defe57b1d66f046573af",
-        "summary": "The package-lock.json file is a lockfile for Node.js projects. It contains information about the exact versions of the dependencies used in the project, ensuring consistent installations across different environments. The specified dependencies include packages for database interaction (mongoose), security (bcrypt, jsonwebtoken), server-side operations (express), authentication (passport, passport-google-oauth20, passport-apple), file handling (multer, sharp), and other utility functions.",
+        "hash": "b29a5f338ef99acf1e2372ef474329b8fac36a3732af5c17a4876f6e8bc23e00",
+        "summary": "This is a package-lock.json file for a Node.js project named 'cltgigs_backend'. It lists various dependencies and devDependencies required by the project, including libraries for handling HTTP requests, authentication, database interactions, and security features. The lockfile version is 3, indicating it's using npm version 7 or later.",
         "functions": [],
-        "variables": [
-            "dependencies",
-            "@elastic/elasticsearch",
-            "axios",
-            "bcrypt",
-            "cors",
-            "dotenv",
-            "express",
-            "express-rate-limit",
-            "faker",
-            "helmet",
-            "jsonwebtoken",
-            "mongoose",
-            "multer",
-            "passport",
-            "passport-apple",
-            "passport-google-oauth20",
-            "sharp",
-            "socket.io",
-            "xss-clean"
-        ],
+        "variables": [],
         "language": "JavaScript"
     },
     ".\\package.json": {
-        "hash": "a100b2961672d3a3938664dbd439f8dd966f7cfccd7c2e352ec0d49bfae7b563",
-        "summary": "The package.json file lists dependencies for a Node.js project, including libraries for working with Elasticsearch, HTTP requests, authentication, database interactions, and more.",
+        "hash": "d3cdf4da7bf311c0d1487e506ddd3f38e8f90ced1017785b360b356d4108aebd",
+        "summary": "This is a package.json file for a Node.js project. It lists various dependencies required for the application, including libraries for database interaction (mongoose), authentication (passport and its strategies), security (helmet), HTTP requests (axios), and utility tools (faker). Additionally, it includes development dependencies such as testing frameworks (chai, mocha) and mocking libraries.",
         "functions": [],
         "variables": [],
         "language": "JavaScript"
     },
     ".\\server.js": {
-        "hash": "1576010f07375ffd8b7cbeffa99692a5e5d843de085d10909a2abb5c48b2b115",
-        "summary": "The server.js file sets up an Express application with various middleware for security and rate limiting, connects to a MongoDB database using Mongoose, initializes Socket.io for real-time communication, and defines routes for authentication, user management, gig posting, bidding, messaging, attachment handling, reviews, and reporting.",
+        "hash": "ed777194c8f43524008af09d5c7a7c04be0a18f153c22e7c535ad611dd0213ad",
+        "summary": "This is a server.js file that sets up an Express application with various middleware for security, rate limiting, and CORS. It also integrates Socket.io for real-time communication. The file imports several routes related to authentication, users, gigs, bids, messages, attachments, reviews, and reports.",
         "functions": [
             "init",
             "setupSocketIO"
@@ -108,15 +91,7 @@
             "mongoose",
             "path",
             "passport",
-            "http",
-            "authRoutes",
-            "userRoutes",
-            "gigRoutes",
-            "bidRoutes",
-            "messageRoutes",
-            "attachmentRoutes",
-            "reviewRoutes",
-            "reportRoutes"
+            "http"
         ],
         "language": "JavaScript"
     },
@@ -131,21 +106,21 @@
         "language": "dotenv"
     },
     ".\\client\\.env.dev": {
-        "hash": "a0af43edbaa8da7d106e703a79f030d17cc675507b275ae6da0e65faaa4151e5",
-        "summary": "The .env.dev file contains environment variables for a client application, specifying API and server URLs.",
+        "hash": "b90383577f3f9336ca39598efdbdbdf1e94496b3d8b8a76012a2d0f29e7bb19c",
+        "summary": "This is a configuration file for a development environment, setting up API and server URLs.",
         "functions": [],
         "variables": [
             "VITE_API_URL",
             "VITE_SERVER"
         ],
-        "language": "Configuration file (dotenv)"
+        "language": "dotenv (used in JavaScript/TypeScript projects)"
     },
     ".\\client\\.gitignore": {
-        "hash": "fe718e7babb14f3cbad2d97f08889b9ce5215ed3fe0e43b2b8cfbfb3b9b844e8",
-        "summary": "The .gitignore file contains patterns for files and directories that should be ignored by Git, including logs, build artifacts, and editor-specific files.",
+        "hash": "f66d28e08b9d02b29b211eebdfb41018d0d83746c169ec19e9cc25ae536d3eef",
+        "summary": "This .gitignore file is used to specify intentionally untracked files in a Git repository. It includes various types of logs, node modules, build directories, and editor-specific configuration files to be ignored by Git.",
         "functions": [],
         "variables": [],
-        "language": "Git Configuration"
+        "language": "Git"
     },
     ".\\client\\components.json": {
         "hash": "5da1411bc73b138145a3f7928a69338a5a42f3fa4c2a7440f6a669fcfbceb0a4",
@@ -186,29 +161,25 @@
         "language": "HTML"
     },
     ".\\client\\package-lock.json": {
-        "hash": "72f3023e8090069c55b1577dd9b6743836bc5bcc337e05417fd944c953b0f817",
-        "summary": "The file is a package-lock.json for a client project, detailing its version (0.0.0) and listing various dependencies such as font-awesome components, radix-ui components, axios for HTTP requests, dotenv for environment variables, jwt-decode for decoding JSON Web Tokens, and other utility libraries.",
+        "hash": "9c0f031e47fe72b6f5fff1c0505602486b3c58f5260170aebadd928e732f9477",
+        "summary": "This is a package-lock.json file for a Node.js project named 'client'. It lists various dependencies required by the project, including libraries for fontawesome icons, radix-ui components, axios for HTTP requests, and others.",
         "functions": [],
-        "variables": [],
+        "variables": [
+            "lockfileVersion",
+            "requires"
+        ],
         "language": "JSON"
     },
     ".\\client\\package.json": {
-        "hash": "84f237d7e136e9503dce23b423a5da293655fca445f61b450317a1f3fca7a40e",
-        "summary": "This is a package.json file for a client-side application using JavaScript (ES modules). It includes scripts for development, building, linting, and previewing the project. The dependencies list various libraries for UI components, authentication, data handling, and utilities.",
+        "hash": "5d592c5295c5256f3b033669dd0655cb64d956bdbd1a3d5ddff3a7358af03fbe",
+        "summary": "This is a package.json file for a client-side project, configured with scripts for development, building, linting, and preview. It includes dependencies on various libraries and components from FontAwesome, Radix UI, Shadcn UI, Axios, and others.",
         "functions": [
             "dev",
             "build",
             "lint",
             "preview"
         ],
-        "variables": [
-            "name",
-            "private",
-            "version",
-            "type",
-            "scripts",
-            "dependencies"
-        ],
+        "variables": [],
         "language": "JavaScript"
     },
     ".\\client\\postcss.config.js": {
@@ -221,8 +192,8 @@
         "language": "JavaScript"
     },
     ".\\client\\tailwind.config.js": {
-        "hash": "181fc912f63db92b3ca1e9ab63ef307a2d3fb4e5d81272f8d731ec925ec170bc",
-        "summary": "This Tailwind CSS configuration file sets up dark mode, specifies content files to scan for utility classes, and extends the default theme with custom fonts, border radii, keyframes, and animations.",
+        "hash": "b19f2b25cab4e608c76fcd08ef5ea971316e361b5d7ee19b8cb9076adf624ccd",
+        "summary": "This is a Tailwind CSS configuration file for a client project. It sets up dark mode, specifies content paths, and customizes the theme with extended font families, border radii, keyframes, and animations for accordion effects.",
         "functions": [],
         "variables": [
             "darkMode",
@@ -311,17 +282,20 @@
         "language": "SVG"
     },
     ".\\client\\src\\App.jsx": {
-        "hash": "4c767f413fb799fd5fd287f63c44949469f520d1404ebaf11d051d88ba925061",
-        "summary": "This React application's main component, App.jsx, sets up routing for various pages such as Home, Login, Register, MyGigs, Messages, CommunityCard, GigDetails, CreateGig, EditGig, Settings, Dashboard, MyBids, and SearchResults. It uses react-router-dom for navigation and includes a Navbar component. Protected routes are managed using a ProtectedRoute component.",
+        "hash": "0a095038262a10eb10397b8ebd03420723bc49a925d742149fa66e9046dcec25",
+        "summary": "The App.jsx file is a React component that sets up routing for a web application using react-router-dom. It imports various pages and components, including Navbar, ProtectedRoute, and several page components like Home, Login, Register, etc. The App component renders these routes conditionally based on the user's authentication status and the current location.",
         "functions": [
             "App"
         ],
-        "variables": [],
+        "variables": [
+            "location",
+            "isMessagesPage"
+        ],
         "language": "JavaScript"
     },
     ".\\client\\src\\index.css": {
-        "hash": "af16592d10ca572ea56c75b64e532e83d16e6b78e347693e7b73d9078ddeda39",
-        "summary": "The index.css file is a Tailwind CSS configuration file that includes base styles, components, and utilities. It defines a custom CSS variable --radius with a value of 0.5rem within the :root selector.",
+        "hash": "030c11c640692596ca7ef5fed18f556129523879faf5397d39b71804ccaa4a7e",
+        "summary": "This CSS file is designed for a client-side application. It uses Tailwind CSS to apply base styles, components, and utilities. Custom styles are defined within the '@layer base' section, setting global properties like height, margin, padding, and overflow. The file also includes custom scrollbar styling for both webkit browsers (like Chrome and Safari) and Firefox, ensuring consistent appearance across different browsers. Additionally, it defines smooth transitions for progress bars and hover effects for specific elements.",
         "functions": [],
         "variables": [
             "--radius"
@@ -343,8 +317,8 @@
         "language": "TypeScript"
     },
     ".\\client\\src\\api\\axiosInstance.js": {
-        "hash": "284ab2d9c582995928679b6ede83ee50a6c6207bb822ed486538fb6a80fbeed8",
-        "summary": "This JavaScript file creates an Axios instance configured to make API requests. It logs the base URL and includes an interceptor that adds an authorization token to requests if one exists in localStorage.",
+        "hash": "e64d6eb92cabc430e6832258ef73d74bbc9effe3c6f37ebf9da5e9122ac6e838",
+        "summary": "This file contains an Axios instance configured for making HTTP requests to a specified base URL. It includes a request interceptor that adds an authorization token to headers if one exists in localStorage and logs the final request URL.",
         "functions": [
             "interceptors.request.use"
         ],
@@ -355,8 +329,8 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\Attachment.jsx": {
-        "hash": "4dcd09a36c7811b018c8d91eff03dccc8b507e258331ce5b2260cf63776fa6b3",
-        "summary": "The Attachment.jsx file is a React component that displays an image attachment. It takes in props for the file URL and optional className, fetches the image from a server using the provided URL, and renders it within a styled div.",
+        "hash": "0ede2e14681700cd41cb76ad0ff22306dbba71ab789a56d836c8a5120bf28be8",
+        "summary": "This file contains a React component named 'Attachment' that renders an image from a provided URL. It checks if the 'fileUrl' is available; if not, it returns null. The image source is constructed by combining a server URL (from environment variables) with the file URL.",
         "functions": [
             "Attachment"
         ],
@@ -368,8 +342,8 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\CategoryBadge.jsx": {
-        "hash": "b693fd4131a80528e5f0670f0feda81cb35f0e13c2fe0a7f39e54a3eabe6b73c",
-        "summary": "The CategoryBadge.jsx file is a React component that renders a badge with an icon and category text. It uses the Lucide Icons library for icons, defaulting to a 'Tag' icon if the specified icon is not found.",
+        "hash": "c776537a2529d8707418c123c2ee3dac5cb3ada131baad37706611c9f0afa16f",
+        "summary": "The CategoryBadge.jsx file is a React component that renders a badge with an icon and category name. It uses Lucide Icons for displaying icons, defaults to 'Tag' if the specified icon is not found, and applies styling based on the provided color.",
         "functions": [
             "CategoryBadge"
         ],
@@ -382,51 +356,38 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\Navbar.jsx": {
-        "hash": "79adf5745399e1998828f02ad982f8de2d647745308ec70164db9471fed803c9",
-        "summary": "The Navbar.jsx file is a React component that renders a navigation bar. It utilizes various hooks and context to manage authentication, state, and interactions with other components like Notifications and ProfilePicture. The navbar includes features for mobile menu toggling, notifications, profile dropdowns, and user logout functionality.",
+        "hash": "d99fad1454a249554046f265ee2cd10346158ca092c748215512c22891844524",
+        "summary": "The Navbar.jsx file is a React component that represents the navigation bar for a web application. It uses context to access authentication data, integrates with Socket.IO for real-time notifications, and manages various UI states such as mobile menu open/close, notifications display, and profile dropdown. The component includes several icons from Lucide-react for visual elements like menu, bell, user, etc.",
         "functions": [
-            "useContext",
-            "useState",
-            "useRef",
-            "useEffect",
-            "navigate",
-            "setMobileMenuOpen",
-            "setNotificationsOpen",
-            "setProfile",
-            "setUnreadCount",
-            "setIsProfileDropdownOpen",
-            "logout"
+            "Navbar"
         ],
         "variables": [
-            "token",
-            "userData",
             "mobileMenuOpen",
             "notificationsOpen",
             "profile",
             "unreadCount",
-            "isProfileDropdownOpen",
-            "mobileMenuRef",
-            "profileDropdownRef"
+            "isProfileDropdownOpen"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\Notifications.jsx": {
-        "hash": "d3bf38dccde763ceff6771323b93eb25674dd1a7d4e078e5395ce0d8ba610d7c",
-        "summary": "This React component fetches and displays user notifications. It uses Axios for API calls, a context (AuthContext) to access authentication tokens, and React hooks like useState and useEffect. The component tracks unread notifications and provides functionality to close itself and refresh the notification list.",
+        "hash": "9df98517f69885504d5b3a65e52f8e6929d3520fa1a69bc2676b0b234ccd4643",
+        "summary": "This React component, Notifications, handles fetching and displaying user notifications. It uses context for authentication, state hooks for managing notifications, unread count, and user points. The component also includes mock achievement data and icons from react-icons.",
         "functions": [
             "fetchNotifications"
         ],
         "variables": [
+            "token",
             "notifications",
             "unreadCount",
-            "token",
-            "navigate"
+            "userPoints",
+            "achievements"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\ProfilePicture.jsx": {
-        "hash": "3844e6d2834fe5998910ae7963cc1dcae3ddb73ed7a8a82a9b1dc0c1dd97e615",
-        "summary": "This React component, ProfilePicture.jsx, renders a profile picture or a fallback User icon. It accepts props for the image URL, name, size, and additional class names. The component checks if the image URL is available and uses it; otherwise, it falls back to an empty src attribute with rounded styling.",
+        "hash": "394fb90b2dd505dc64a8b8e5304a05c3e317639a69c12dd32c3c4335047a416f",
+        "summary": "The ProfilePicture.jsx file is a React component that renders a profile picture with optional fallbacks and debugging.",
         "functions": [
             "ProfilePicture"
         ],
@@ -436,8 +397,8 @@
             "name",
             "size",
             "className",
-            "imageUrl",
-            "sizeClass"
+            "sizeClass",
+            "imageUrl"
         ],
         "language": "JavaScript"
     },
@@ -454,39 +415,46 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\ReportButton.jsx": {
-        "hash": "5532eb362c8b2dfd2f03161a26a5f0af543ec1083981d41c2e776d4d6992d7b7",
-        "summary": "This React component, named ReportButton, allows users to report content by providing details such as the reporter's ID, creator's ID, content ID, type, and additional details. It uses the AuthContext to access user data and sends a report to the backend using Axios.",
+        "hash": "e7b6565c9a5b2a6e7e1d087026b3e9a92af17efa0f33197ebc2a857ed7329672",
+        "summary": "This is a React component named ReportButton which allows users to report content. It includes state management for modal visibility and report details, uses axios to send reports to the backend, and leverages an authentication context to get user data.",
         "functions": [
             "handleReport"
         ],
         "variables": [
             "isModalOpen",
+            "setIsModalOpen",
             "reportDetails",
-            "userData"
+            "setReportDetails",
+            "userData",
+            "contentId",
+            "contentType",
+            "creatorId",
+            "reportData"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\components\\ui\\accordion.tsx": {
-        "hash": "de6a8f31cd5fbac6b7e9759628f32185e75a58658c8d260dece0424988304732",
-        "summary": "This TypeScript React component implements an accordion UI using Radix UI's AccordionPrimitive. It includes components for the Accordion root, items, and triggers, with additional styling from Tailwind CSS.",
+        "hash": "6e832988a4ea9c6fa8a83ff783a2bb7276d3e8144e7e4146afdc5359488905da",
+        "summary": "The provided TypeScript code defines an accordion component using the Radix UI library, customizing it with a ChevronDown icon and additional styling. The AccordionItem and AccordionTrigger components are extended from their original primitives to include specific class names for styling purposes.",
         "functions": [
             "AccordionItem",
             "AccordionTrigger"
         ],
         "variables": [
+            "cn",
+            "AccordionPrimitive",
             "ChevronDown"
         ],
         "language": "TypeScript"
     },
     ".\\client\\src\\components\\ui\\alert.tsx": {
-        "hash": "a3cd32d4f39dfb904db15e36d59b9d60ed3cd67711c8ebfeb295f5da00f7c2d1",
-        "summary": "This TypeScript React component defines an Alert UI element with customizable styles for different variants such as default and destructive. It uses the class-variance-authority library to manage CSS classes based on props.",
+        "hash": "f47c1b0e9c6e3ef670851af7796f5edb2c493cc6ed32624ab2a6dae421717eef",
+        "summary": "This TypeScript file defines a React component named 'Alert' that is styled using Tailwind CSS classes. The Alert component can have different variants ('default' and 'destructive') which modify its appearance, such as background color, text color, and border styles.",
         "functions": [
             "Alert"
         ],
         "variables": [
-            "alertVariants",
-            "cn"
+            "alertVariants"
         ],
         "language": "TypeScript"
     },
@@ -541,8 +509,8 @@
         "language": "TypeScript"
     },
     ".\\client\\src\\components\\ui\\dot-pattern.tsx": {
-        "hash": "e54f7fd7977be60de196ad53ac554521d28d6590d09f4c7a729028a33f4b5e7d",
-        "summary": "The file defines a React component called DotPattern that renders an SVG pattern consisting of dots. It allows customization of dimensions, positions, and styles through props.",
+        "hash": "c15a4cf8b5849f4226e9cfbd1b61cd241526f99d1b23d56bb40ca9c9024fdaae",
+        "summary": "The file defines a React component called DotPattern which renders an SVG pattern consisting of dots. It accepts various props to customize the pattern's appearance, such as dimensions and circle properties.",
         "functions": [
             "DotPattern"
         ],
@@ -554,7 +522,8 @@
             "cx",
             "cy",
             "cr",
-            "className"
+            "className",
+            "id"
         ],
         "language": "TypeScript"
     },
@@ -631,17 +600,16 @@
         "language": "TypeScript"
     },
     ".\\client\\src\\components\\ui\\tabs.tsx": {
-        "hash": "1349363f162d22e4628b62a894366fd6328c034a44bba1b041f66b8b161c3877",
-        "summary": "The file is a TypeScript component for creating tabbed interfaces using the Radix UI library. It includes custom styles and ref forwarding for Tabs, TabsList, and TabsTrigger components.",
+        "hash": "bc6b5439bfc7d9c8adcd64b3a3661c3fea158b7f98509a00e50fda581de8ce72",
+        "summary": "The file contains a React component for implementing tabs using the Radix UI library. It defines custom styles and behavior for the Tabs, TabsList, and TabsTrigger components.",
         "functions": [
             "Tabs",
             "TabsList",
             "TabsTrigger"
         ],
         "variables": [
-            "className",
-            "props",
-            "ref"
+            "TabsPrimitive",
+            "cn"
         ],
         "language": "TypeScript"
     },
@@ -681,8 +649,8 @@
         "language": "TypeScript"
     },
     ".\\client\\src\\pages\\BidForm.jsx": {
-        "hash": "39078d2ee625b5250a114f5c64b8d1c67ce2a49f3c25b69323455e4a25d40b9c",
-        "summary": "This React component, BidForm, allows users to place a bid on a gig. It fetches gig details using Axios and displays them. Users can input their bid amount and message. The component uses context for authentication and navigation.",
+        "hash": "9cc895b7f9de95884dd6c627ebe43a53bae249d16a8abb20b3fa13edbeb5b491",
+        "summary": "The BidForm component is a React component that allows users to place bids on gigs. It fetches gig details from an API and displays them, along with input fields for bid amount and message. The component uses context for authentication and routing.",
         "functions": [
             "BidForm"
         ],
@@ -690,7 +658,6 @@
             "gigId",
             "token",
             "user",
-            "navigate",
             "amount",
             "message",
             "gigData",
@@ -715,8 +682,8 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\CommunityCard.jsx": {
-        "hash": "109778b42257632e8b9245ada90890d3f1c5483b065d0256574a9bf88328a5a8",
-        "summary": "The CommunityCard.jsx file is a React component that displays user profiles and allows users to add reviews. It fetches profile data and reviews using axios, manages state for new reviews, hovered ratings, errors, editing mode, edited profile details, portfolio files, and certification files.",
+        "hash": "67a82a2c12af4ed3f57e307f9b95b83a0300259cbfeab3d74c4eaf79a447575a",
+        "summary": "The CommunityCard.jsx file is a React component that displays a user's profile information, skills, and reviews. It fetches data from an API using axios and manages state with useState and useContext hooks. The component includes various UI elements for displaying icons, charts, and interactive features like sharing and editing. It also utilizes Framer Motion for animations and Toastify for notifications.",
         "functions": [
             "CommunityCard"
         ],
@@ -725,30 +692,28 @@
             "token",
             "userData",
             "profile",
-            "reviews",
-            "newReview",
-            "hoveredRating",
-            "error",
-            "isEditing",
-            "editedProfile",
-            "portfolioFiles",
-            "certificationFiles"
+            "reviews"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\CreateGig.jsx": {
-        "hash": "051de61efaf08d815cd98ed8e9bb4360178745592dd38a9f735d46733ab59605",
-        "summary": "This React component allows users to create a new gig by submitting details such as title, description, price, category, zipcode, and an optional file. It uses ShadCN UI components for styling and interacts with an API to handle form submission.",
+        "hash": "00f41d150256494c2e04df36368ae0a69bd4b79e3bfc06311517f5c25823ad70",
+        "summary": "This is a React component for creating a gig. It includes steps for setting up the gig details, such as title, description, category, location, dates, and rewards. The component uses state management to track user progress through various stages of the gig creation process and integrates with an API using Axios.",
         "functions": [
-            "handleSubmit"
+            "CreateGig"
         ],
         "variables": [
+            "navigate",
+            "step",
+            "xpEarned",
+            "showSuccess",
+            "completionPercentage",
             "title",
             "description",
-            "price",
-            "categoryId",
+            "category",
             "zipcode",
-            "file"
+            "startDate",
+            "completionDate"
         ],
         "language": "JavaScript"
     },
@@ -762,41 +727,43 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\EditGig.jsx": {
-        "hash": "c18c8a9cc084f6633e57ddff8b78630a51384980e81b2cf33f996700666c46eb",
-        "summary": "This React component handles editing a gig. It fetches gig details using an Axios GET request and updates them with a PUT request. The component uses React hooks like useEffect, useState, and useContext for managing state and side effects.",
+        "hash": "df5ec2686f23da3b72dc73b7d465e122f877a90284bc2e6943e0b15d44bfff65",
+        "summary": "The EditGig.jsx file is a React component that allows users to edit gig details. It uses state management with useState and useEffect hooks, as well as routing with useNavigate and useParams from react-router-dom. The component includes form fields for title, description, category, zipcode, startDate, endDate, duration, price, minOrder, maxOrder, files, tags, services, and reviews. It also handles file uploads and integrates with an API using axiosInstance.",
         "functions": [
-            "fetchGig",
-            "handleUpdate"
+            "EditGig"
         ],
         "variables": [
-            "gigId",
             "navigate",
-            "gig",
+            "gigId",
+            "step",
+            "showSuccess",
+            "completionPercentage",
+            "existingAttachment",
             "title",
             "description",
-            "price"
+            "category",
+            "zipcode",
+            "startDate"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\GigDetails.jsx": {
-        "hash": "c16a73158d96ac68c4b3ac4ef036199d803ca7c5dba82656dc0458207cf2b99a",
-        "summary": "The GigDetails.jsx file is a React component that displays details about a gig, including its attachments and bids. It allows users to place bids on the gig if they are authenticated. The component fetches gig data from an API, handles bid submission, and manages various states such as loading, error handling, and editing mode.",
+        "hash": "f86e958af11c0e58f6bdfe8ded0c91b9cf89ad3098c0b7e4c1af9f9071d220e9",
+        "summary": "This is a React component for displaying gig details. It fetches gig information, handles bids, and displays various gig attributes such as price, skills, location, and more.",
         "functions": [
             "GigDetails"
         ],
         "variables": [
+            "gigId",
             "gig",
             "attachments",
             "bids",
             "bidAmount",
             "bidMessage",
             "isLoading",
-            "error",
-            "isPlacingBid",
-            "bidSuccess",
-            "isEditing"
+            "error"
         ],
-        "language": "JavaScript (React)"
+        "language": "JavaScript"
     },
     ".\\client\\src\\pages\\Gigs.jsx": {
         "hash": "7d762221ce7da0b824d679225179b13a0b6b30c259853cc8cfdd0cb2980cef58",
@@ -818,54 +785,42 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\Home.jsx": {
-        "hash": "398e83b0510c8f5bb5145b46c63892a304230f14f5b2f95c95efa2b86d4a23c3",
-        "summary": "This file contains a React component named 'Home' which fetches gig data from an API and displays it using cards. It includes functionalities for searching, filtering, and navigation through gigs. The component also handles user authentication and interaction with UI components.",
+        "hash": "22fa8894e104a73a6fe850dc42fdd3dd48b102107db9d7ab8e0d1d5831316472",
+        "summary": "The Home.jsx file is a React component that utilizes Framer Motion for animations and react-router-dom for navigation. It imports various icons from Lucide-react, an SVG icon library, and uses Axios to make API calls. The file includes a skeleton loading component and functions to retrieve category details with gradients.",
         "functions": [
             "SkeletonCard",
-            "Home"
+            "getCategoryDetails"
         ],
         "variables": [
-            "gigs",
-            "totalGigs",
-            "searchTerm",
-            "currentPage",
-            "itemsPerPage",
-            "isLoading",
-            "error",
-            "navigate",
-            "authContext",
-            "fetchGigs",
-            "handleSearchChange",
-            "handleChangePage"
+            "AuthContext",
+            "axiosInstance"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\Login.jsx": {
-        "hash": "0d792ddc8e0ba0c7be475b13d7fc5ea66c4de39f813910204f72a425dd9cef58",
-        "summary": "The Login.jsx file is a React component responsible for handling user login. It uses the axios library to make API calls and interacts with an authentication context (AuthContext) to manage the login state. The component includes functions to handle standard login, Google login, and Apple login, and it manages form data and error messages.",
+        "hash": "08192b7bc3874f88d5dfe76da3e011dc63ea64620033c2fbd3c3ff4bf7081b97",
+        "summary": "The Login.jsx file is a React component responsible for handling user login functionality. It uses Axios to send login requests and context (AuthContext) to manage authentication state. The component handles token-based logins via query parameters and form submissions, navigating users to the home page upon successful login or displaying errors if authentication fails.",
         "functions": [
-            "handleSubmit",
-            "handleGoogleLogin",
-            "handleAppleLogin"
+            "handleSubmit"
         ],
         "variables": [
             "formData",
-            "error"
+            "error",
+            "searchParams",
+            "token",
+            "res"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\Messages.jsx": {
-        "hash": "b19832582c41035287dd800ee51d63e9dbea2efdf408d63f812d8cec8997dc57",
-        "summary": "The Messages.jsx file is a React component responsible for handling messaging functionality. It uses Axios for API requests, Socket.IO for real-time communication, and manages user authentication through an AuthContext. The component fetches conversations and messages, allows users to send new messages with attachments, and updates the UI in real-time based on user interactions.",
+        "hash": "1ef93a359e06e222a1e399b4fea81ad1f87f02faf7a4f25cc5d7be9d3dd994ec",
+        "summary": "The Messages.jsx file is a React component that handles messaging functionality. It imports necessary dependencies, sets up state management for conversations and messages, and provides UI elements for user interaction such as sending messages, attaching files, and displaying conversation options.",
         "functions": [
             "useEffect",
             "useState",
             "useContext",
             "useRef",
-            "axios.get",
-            "axios.post",
-            "socket.emit",
-            "socket.on"
+            "useCallback"
         ],
         "variables": [
             "token",
@@ -875,17 +830,13 @@
             "urlConversationId",
             "conversations",
             "activeConversation",
-            "messages",
-            "newMessage",
-            "attachment",
-            "isUploading",
-            "isTyping"
+            "messages"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\MyBids.jsx": {
-        "hash": "4c0ce660705fbec2d685b3261b43d90364c22d20ba1f67bf79cd1fa204dc749d",
-        "summary": "The MyBids.jsx file is a React component that fetches and displays a user's bids. It uses Axios for API calls, context for authentication data, and React Router for navigation.",
+        "hash": "2d869a6a4ce05c20328a99c9a169b765e18d7f46dcb27d955ca6bfa064a8a1e2",
+        "summary": "This React component, MyBids.jsx, fetches and displays a list of bids for the authenticated user. It includes functions to handle message navigation and render star ratings based on bid ratings.",
         "functions": [
             "fetchMyBids",
             "handleMessage",
@@ -893,23 +844,26 @@
         ],
         "variables": [
             "bids",
-            "userData"
+            "userData",
+            "navigate"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\MyGigs.jsx": {
-        "hash": "14b7349f0a5345704785ff6506973fb7e2db866b125f11824e5ff1be8ea08d2c",
-        "summary": "This file contains a React component named MyGigs that fetches and displays gigs owned by the authenticated user. It includes functionality to view bids for each gig and navigate to a message page for selected bids.",
+        "hash": "728380d2fe6489b504d7e48633e324212466d40b823fb28cfbd6af4b1c64cfb6",
+        "summary": "This React component, MyGigs.jsx, displays a user's gigs and related information. It fetches gig data from an API, manages state for active tabs, selected gigs, bids, sorting options, and hover states. The component uses hooks like useEffect and useContext, and integrates with routing using react-router-dom. It also incorporates animations with framer-motion and utilizes various icons from different libraries to enhance UI elements.",
         "functions": [
-            "fetchMyGigs",
-            "viewBids",
-            "handleMessage"
+            "MyGigs"
         ],
         "variables": [
+            "activeTab",
             "gigs",
+            "myBids",
             "selectedGigId",
             "bids",
-            "userData"
+            "sortBy",
+            "hoveredGig",
+            "xpProgress"
         ],
         "language": "JavaScript"
     },
@@ -926,39 +880,40 @@
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\SearchResults.jsx": {
-        "hash": "c4ec7ad931ff5f9362b27a5f0b975e3919b0a7f679e45f892c66d1fe64aed471",
-        "summary": "The SearchResults.jsx file is a React component responsible for displaying search results. It fetches gig data from an API, handles pagination, and displays loading skeletons while waiting for data.",
+        "hash": "e33a412733741b560a9d99edcc079afb00e76be77c100f210c00f3177f19e37c",
+        "summary": "This React component (SearchResults) fetches gig data based on search parameters from a server and displays it in paginated form. It includes functionality to handle loading states, pagination navigation, and redirects.",
         "functions": [
             "SkeletonCard",
             "SearchResults"
         ],
         "variables": [
+            "location",
+            "navigate",
+            "queryParams",
             "gigs",
             "totalGigs",
             "page",
             "isLoading",
             "limit",
-            "totalPages",
-            "queryParams",
-            "location",
-            "navigate"
+            "totalPages"
         ],
         "language": "JavaScript"
     },
     ".\\client\\src\\pages\\Settings.jsx": {
-        "hash": "b80e002eee62426554a51655684ab29e195ff5bf41cc91da201cc9bffebbaecc",
-        "summary": "The Settings.jsx file is a React component that handles user settings. It fetches and updates user profile information such as name, bio, location, portfolio, and profile picture using an Axios instance for API calls.",
+        "hash": "9e01d1d2e0fda8e2aedfe18f72b49a97bd22d0128cd61178facdb4d385d23687",
+        "summary": "The Settings.jsx file is a React component that handles user settings and profile management. It fetches user data, allows editing of profile information such as name, bio, location, portfolio, email, notifications, and two-factor authentication, and includes functionality for uploading profile pictures. The component uses context for authentication and integrates with an API for fetching and saving data.",
         "functions": [
-            "fetchProfile"
+            "Settings",
+            "fetchProfile",
+            "updateProfile"
         ],
         "variables": [
             "profile",
-            "bio",
-            "location",
-            "portfolio",
-            "name",
+            "formData",
             "selectedFile",
-            "userData"
+            "activeTab",
+            "progress",
+            "isSaving"
         ],
         "language": "JavaScript"
     },
@@ -1013,48 +968,42 @@
         "language": "JavaScript"
     },
     ".\\controllers\\bidController.js": {
-        "hash": "8317e4bc91e1b7b132e433a364ed1483f9b93258b1a86b4e1790aa3fa0edf02f",
-        "summary": "The bidController.js file contains a Node.js controller for handling bidding functionality. It exports a function to create a new bid on a gig, checking for existing bids and creating notifications and conversations as needed.",
+        "hash": "1ffade29577fb6ee59cda2d8b70db43722346933bcf3617e0a11d8045717c29e",
+        "summary": "This file contains a controller for handling bid-related operations in an application. It includes functions to create bids and interact with various models such as Bid, Gig, Notification, Conversation, and Message. The code uses asynchronous programming and interacts with a database through Mongoose models.",
         "functions": [
             "createBid"
         ],
         "variables": [
-            "existingBid",
-            "gig",
-            "newBid",
-            "userId"
+            "Bid",
+            "Gig",
+            "Notification",
+            "Conversation",
+            "Message"
         ],
         "language": "JavaScript"
     },
     ".\\controllers\\gigController.js": {
-        "hash": "94178e7ff298e41fa45d36d870af7dceec5d3288fc2d6c55a011fbafc4b2864b",
-        "summary": "This file contains a controller for handling gig-related operations. It includes functions to get all gigs, retrieve details about a specific gig, post a new gig, and manage bids and attachments associated with gigs. The controller interacts with models for Gig, Bid, and Attachment, and uses services for zipcode calculations.",
+        "hash": "307eccc666adc2eceb410142bdca7140898bc49739a5978902cbfe54852146ae",
+        "summary": "This JavaScript file contains a controller for handling gig-related operations. It includes functions to get all gigs with various filters such as search term, category, sorting, pagination, location, budget, volunteer status, and tags.",
         "functions": [
-            "getAllGigs",
-            "getGigDetails",
-            "postGig",
-            "manageBids",
-            "handleAttachments"
+            "getAllGigs"
         ],
         "variables": [
-            "categoryMapping",
-            "searchTerm",
-            "category",
-            "sortBy",
-            "page",
-            "limit",
-            "zipCode",
-            "distance",
-            "filter",
-            "distanceMap"
+            "Gig",
+            "Bid",
+            "Attachment",
+            "resizeImage",
+            "findZipcodesWithinWithDistance"
         ],
         "language": "JavaScript"
     },
     ".\\controllers\\messageController.js": {
-        "hash": "b97421312b5244c1b11056a13bcbdf84066ed5ea776275ea48457227b083bcc2",
-        "summary": "This file contains a controller for handling messages in an application, specifically managing conversations and messages related to gigs and bids. It uses Mongoose for database interactions and Socket.IO for real-time notifications.",
+        "hash": "3c36e3184b97dd35072d2a2218c6fabed5871ada66a3bbf1b108a87f663a8228",
+        "summary": "The file `messageController.js` is a Node.js controller responsible for handling message-related API requests. It includes functions to retrieve all conversations for a user, send messages, and mark messages as read.",
         "functions": [
-            "getAllConversationsForUser"
+            "getAllConversationsForUser",
+            "sendMessage",
+            "markMessagesAsRead"
         ],
         "variables": [
             "getIO",
@@ -1069,8 +1018,8 @@
         "language": "JavaScript"
     },
     ".\\controllers\\notificationController.js": {
-        "hash": "17ce5ce780bedaf22abc9c5f5d64a0076c5f6c737c3424e224ed9edff9d8387a",
-        "summary": "The file defines a notification controller with functions to retrieve and mark notifications as read for a user.",
+        "hash": "ac69a9837945e9d28ada2081c893365b4d4e7c8f9e5e6fe4a112ccd9b62e081b",
+        "summary": "This JavaScript file, located at .\\controllers\\notificationController.js, contains two asynchronous functions for handling user notifications. The first function, getNotifications, retrieves up to 50 most recent notifications for a specific user from the Notification model. The second function, markAsRead, marks a specified notification as read.",
         "functions": [
             "getNotifications",
             "markAsRead"
@@ -1084,8 +1033,8 @@
         "language": "JavaScript"
     },
     ".\\controllers\\reviewController.js": {
-        "hash": "04873d1c4ac35a81a395217434f4ffb970f1fc7e55e9025e722419dff79ca079",
-        "summary": "This JavaScript file contains two functions for handling reviews in a user-based application. The first function retrieves all reviews associated with a specific user, while the second function allows a logged-in user to create a new review for another user.",
+        "hash": "9737d15ecee094019f9d69616e25bb15a65da589d32548331c7074981928e102",
+        "summary": "This JavaScript file contains two functions for handling reviews in a user-based system. It exports methods to get reviews by a specific user and to create a new review for a user.",
         "functions": [
             "getReviewsByUser",
             "createReview"
@@ -1101,21 +1050,22 @@
         "language": "JavaScript"
     },
     ".\\controllers\\userController.js": {
-        "hash": "f746aa2c715147ce452dc27600cc5100699527eccfc4b9e0872d804773676614",
-        "summary": "The file 'userController.js' contains functions for user operations such as retrieving public profiles, uploading certifications, and updating user profiles. It uses asynchronous programming with error handling to interact with a User model.",
+        "hash": "5c75a38523c46acfb7a2b193947bc508f933b1cf40d5ba32f2283335f6139c9d",
+        "summary": "This JavaScript file contains functions for user operations such as retrieving a public profile, checking block status, and uploading certifications. It interacts with a User model to perform database operations.",
         "functions": [
             "getPublicProfile",
-            "uploadCertifications",
-            "updateProfile"
+            "checkBlockStatus",
+            "uploadCertifications"
         ],
         "variables": [
+            "User",
             "req",
             "res",
-            "user",
             "userId",
+            "currentUser",
+            "isBlocked",
             "files",
-            "fileUrls",
-            "updatedData"
+            "fileUrls"
         ],
         "language": "JavaScript"
     },
@@ -1156,11 +1106,10 @@
         "language": "JavaScript"
     },
     ".\\models\\Bid.js": {
-        "hash": "5ac8b900ecc0fe765dba27769479ec32edd27db1c106194cdb85db8bb50e21a2",
-        "summary": "The Bid.js file defines a Mongoose schema for a 'Bid' model in a MongoDB database. It includes fields for gig_id, user_id, amount, message, accepted, rejected, conversation_id, and created_at.",
+        "hash": "d4aae5ec782059dcdbef22720e5e4e7c7b10c15291e847f7e201f5034b1f94ff",
+        "summary": "The file defines a Mongoose model for 'Bid' with fields including gig_id, user_id, amount, message, accepted status, rejected status, conversation_id, created_at timestamp, and overall status. It also includes a unique index on gig_id and user_id.",
         "functions": [],
         "variables": [
-            "mongoose",
             "bidSchema"
         ],
         "language": "JavaScript"
@@ -1175,9 +1124,11 @@
         "language": "JavaScript"
     },
     ".\\models\\Gig.js": {
-        "hash": "9cd4ea6aa0e29e851e5ac564295e4004b4bca16b32dc32d8ebed3e85cce058f8",
-        "summary": "This file defines a Mongoose schema for a 'Gig' model in a Node.js application. The Gig model includes fields such as user_id, title, description, price, category_id, zipcode, and created_at. An index is set on the zipcode field.",
-        "functions": [],
+        "hash": "f2ac2b8ce5a874f73c8ec071b45093ecdf0e8b152b21e242eae369be55396b13",
+        "summary": "This file defines a Mongoose schema for 'Gig', which represents job listings or tasks with various attributes like title, description, category, location, dates, team size, tasks, and budget. The schema includes validations and default values for certain fields.",
+        "functions": [
+            "validator"
+        ],
         "variables": [
             "mongoose",
             "gigSchema"
@@ -1195,52 +1146,55 @@
         "language": "JavaScript"
     },
     ".\\models\\Notification.js": {
-        "hash": "303ffd01763e1886ce4e773fe1c7a23ab9c77d4f1849fc03f2a414f8d5d1db13",
-        "summary": "The file defines a Mongoose schema for notifications in a Node.js application, including fields for user ID, notification type, message content, read status, optional link, and creation timestamp.",
+        "hash": "8f54d80d69536b419a5de3a166aeaf6e8ec7e7e6e66b34749f7ab20b65feae9f",
+        "summary": "The Notification.js file defines a Mongoose schema for notifications, including fields such as user_id, type, message, read status, an optional link, and a creation timestamp. It exports a Mongoose model based on this schema.",
         "functions": [],
         "variables": [
+            "mongoose",
             "notificationSchema"
         ],
         "language": "JavaScript"
     },
     ".\\models\\Report.js": {
-        "hash": "d0fa0af24e1ae72da713775dd91201575d55825c85cb00c1b08d1cce0412d73b",
-        "summary": "This is a Mongoose model for a 'Report' in a Node.js application. It defines a schema with fields such as reporterId, creatorId, contentId, contentType, reportDetails, and timestamp.",
+        "hash": "85fc7ba56d209a01927bd68fa09092e47bd0f5efb6b0d3384d6bb123dc0f2d4e",
+        "summary": "The file defines a Mongoose schema for a 'Report' model, which includes fields for reporter ID, creator ID, content ID, content type, report details, and timestamp. It exports the Report model based on this schema.",
         "functions": [
-            "module.exports"
+            "mongoose.Schema",
+            "Date.now"
         ],
         "variables": [
-            "mongoose",
             "reportSchema"
         ],
         "language": "JavaScript"
     },
     ".\\models\\Review.js": {
-        "hash": "7456485b2f75cd2ad8f45034d4e66d4a399cd3afa493c800d0afc60e04bcafeb",
-        "summary": "This file defines a Mongoose model for a 'Review' schema, which includes fields for user_id, reviewer_id, rating, comment, and date.",
+        "hash": "63b13a86bf51b4b4f2191cf2130a19bc29c556cc9d4b42f56bb87cefcdfdca4d",
+        "summary": "This file defines a Mongoose schema for a 'Review' model, which includes fields for user IDs, reviewer IDs, ratings, comments, and dates. It exports the Review model.",
         "functions": [],
         "variables": [
-            "mongoose",
             "reviewSchema"
         ],
         "language": "JavaScript"
     },
     ".\\models\\User.js": {
-        "hash": "40390dd1ac6e7e052b1e2e2e183a6dcb7ead96a3af6b460a84dd8b47fb60e4d5",
-        "summary": "The file 'User.js' defines a Mongoose schema for user models with various fields including personal information, contact details, skills, availability, portfolio, and reviews. It uses MongoDB as the underlying database.",
+        "hash": "27be40109ea1e68f3feadfe4a70d9f5a5fb57558fdf60af3bb460d3e191ca68b",
+        "summary": "This is a Mongoose schema definition for a User model. It includes fields for personal information, contact details, skills and expertise, availability, and portfolio/work samples.",
         "functions": [],
         "variables": [
-            "userSchema"
+            "userSchema",
+            "mongoose"
         ],
         "language": "JavaScript"
     },
     ".\\models\\Zipcode.js": {
-        "hash": "52f0c47cc81d5e0f21ddec8403d33c5f47b86ecbd0da29e073a83807f8dbe591",
-        "summary": "This is a Mongoose model for managing zipcodes with geospatial data. It defines a schema for zipcodes, including fields for the zip code and its geographic location (longitude and latitude). The model also sets up a 2dsphere index on the location field to support efficient geospatial queries.",
-        "functions": [],
+        "hash": "612f696b9402623af243e8a3fcdc7ff8d36f44a07947f71abec247c624d62679",
+        "summary": "The file defines a Mongoose model for handling zipcode data, including fields for zip code and location with geospatial coordinates. It also sets up a 2dsphere index for efficient geospatial queries.",
+        "functions": [
+            "mongoose.model"
+        ],
         "variables": [
             "zipcodeSchema",
-            "mongoose"
+            "location.coordinates"
         ],
         "language": "JavaScript"
     },
@@ -1261,29 +1215,31 @@
         "language": "JavaScript"
     },
     ".\\routes\\authRoutes.js": {
-        "hash": "e5b2ae445dc40e8874f5965515b45ec1460ab7dd4d33f2a80228f0f3193135d9",
-        "summary": "The file .\\routes\\authRoutes.js defines routes for user authentication using Express. It includes routes for registering and logging in with traditional email/password credentials, as well as for authenticating users via Google OAuth. The file also contains a helper function to generate JSON Web Tokens (JWTs) after successful OAuth authentication.",
+        "hash": "308cfd75e0f1177b2201785b5f902cee168453d6383a1cb39eed410f936ebcee",
+        "summary": "This file contains authentication routes for an Express.js application, including traditional email/password registration and login, as well as OAuth2.0 integration for Facebook and Google logins. It uses Passport.js for authentication middleware and JWT (JSON Web Tokens) for user sessions.",
         "functions": [
             "registerUser",
             "loginUser",
             "generateToken"
         ],
         "variables": [
-            "router",
-            "jwt"
+            "jwt",
+            "router"
         ],
         "language": "JavaScript"
     },
     ".\\routes\\bidRoutes.js": {
-        "hash": "b9969bad85ef9c7378a84208051f0a2d89e45505acd036e417327eeefb735d57",
-        "summary": "This file contains route definitions for handling bid-related operations in an Express.js application. It includes routes for creating a bid, retrieving bids for a gig, accepting or denying a bid, and retrieving my bids.",
+        "hash": "0dcf8d32016c5e3a53778c3eed05716eed3bd7bb16487ef3fd4e3da7dc8ed372",
+        "summary": "This is a file containing routes for handling bidding operations in an application. It defines various endpoints such as creating a bid, retrieving bids for a specific gig, accepting or denying a bid, and updating bid status. The file uses Express.js and includes middleware for authentication.",
         "functions": [
             "createBid",
             "getBidsForGig",
             "acceptBid",
             "denyBid",
             "getMyBids",
-            "undenyBid"
+            "undenyBid",
+            "deleteBid",
+            "updateBidStatus"
         ],
         "variables": [
             "express",
@@ -1293,8 +1249,8 @@
         "language": "JavaScript"
     },
     ".\\routes\\gigRoutes.js": {
-        "hash": "2d779231367866df9d9af278656b5deab770a4280cda00447ab3aecbd4ec9e12",
-        "summary": "This file defines routes for gig-related operations in an Express.js application. It includes endpoints for retrieving all gigs, creating a new gig with authentication and image upload, viewing details of a specific gig, listing gigs owned by authenticated users, updating an existing gig, and deleting a gig.",
+        "hash": "af2cc48a10bcfe2cd878f219c0861fabdb7c3750ec354daa0d821fbb65a78f99",
+        "summary": "This file contains route definitions for handling gig-related requests in an Express.js application. It includes endpoints for getting all gigs, creating a new gig with authentication and image upload middleware, retrieving gig details, listing the user's own gigs, updating an existing gig with authentication and optional image upload, and deleting a gig with authentication.",
         "functions": [
             "getAllGigs",
             "createGig",
@@ -1304,13 +1260,16 @@
             "deleteGig"
         ],
         "variables": [
-            "router"
+            "express",
+            "router",
+            "authenticate",
+            "gigUpload"
         ],
         "language": "JavaScript"
     },
     ".\\routes\\messageRoutes.js": {
-        "hash": "1d3d264e585ad29740144f54e387dc4c462c5bfe149afa254762530a4cdf36e2",
-        "summary": "This is a JavaScript file for defining routes related to messaging functionalities. It uses Express.js and includes middleware for authentication, along with controllers handling various message-related operations such as fetching conversations, sending messages, deleting messages, reporting messages, blocking/unblocking conversations.",
+        "hash": "d883eb95a339ebfc007eb85934f21ec707c30e2147270764c2181d5c35391c5d",
+        "summary": "This file contains route definitions for handling message-related operations in an Express.js application. It includes routes for retrieving conversations and messages, sending and deleting messages, reporting messages, blocking and unblocking conversations.",
         "functions": [
             "getAllConversationsForUser",
             "getConversationMessages",
@@ -1328,8 +1287,8 @@
         "language": "JavaScript"
     },
     ".\\routes\\notificationRoutes.js": {
-        "hash": "e65ebb8d5d191a2f78f25afb4b7d19ec7fbc8c1d535ad207e216cf686c8abe76",
-        "summary": "This file defines routes for handling notifications in a web application using Express.js. It includes middleware for authentication and several controller functions to manage notifications such as retrieving, marking as read, deleting, and clearing all notifications.",
+        "hash": "de150c2fa7892335986d2097cd808dff4664eae8b74b81e733dca9f487b31197",
+        "summary": "This file defines routes for handling notification-related operations in an Express.js application. It includes endpoints for retrieving all notifications, marking a specific notification as read, marking all notifications as read, and deleting a notification. Each route requires user authentication.",
         "functions": [
             "getNotifications",
             "markAsRead",
@@ -1337,33 +1296,35 @@
             "deleteNotification"
         ],
         "variables": [
-            "express",
             "router"
         ],
         "language": "JavaScript"
     },
     ".\\routes\\reportRoutes.js": {
-        "hash": "d65e73b709cf01847ecdaa5cb548ae49aaec3f96acb1eadc1298cfa9b7702e91",
-        "summary": "This file defines routes for handling report submissions in an Express.js application. It includes a POST route to create a new report, which requires authentication and involves saving the report data to a database.",
+        "hash": "9e3dee9d150fbfb41379afe526c0f38a955de7615864a5aa11174756f89093e3",
+        "summary": "This is a Node.js route file for handling report submissions. It uses Express to define a POST endpoint that requires authentication middleware. The endpoint creates a new Report instance using data from the request body and saves it to the database. If successful, it returns a success message; otherwise, it logs the error and sends an error response.",
         "functions": [
-            "router.post('/', authenticate, async (req, res) => {...})"
+            "router.post('/', authenticate, async (req, res) => { ... })"
         ],
         "variables": [
-            "express",
-            "router",
-            "Report",
-            "authenticate"
+            "reporterId",
+            "creatorId",
+            "contentId",
+            "contentType",
+            "reportDetails",
+            "timestamp",
+            "newReport"
         ],
         "language": "JavaScript"
     },
     ".\\routes\\reviewRoutes.js": {
-        "hash": "693a5dcfee85f4a28288d77cd50f9149d80c4981d2dbd56be29209f1288ad8d6",
-        "summary": "This is a route configuration file for an Express.js application that defines API endpoints for managing reviews. It includes routes to get all reviews by a user, create a new review (with authentication), update a review, and delete a review.",
+        "hash": "9b2bda5f4aebf15a30e6f23aeec391a4ae9977a982a2d75c913b9b993b0de108",
+        "summary": "The file defines routes for handling reviews in an Express application. It includes endpoints to get all reviews for a user, create a new review with authentication, update a review by ID (optional), and delete a review by ID (optional).",
         "functions": [
-            "router.get('/user/:userId', reviewController.getReviewsByUser)",
-            "router.post('/user/:userId', authenticate, reviewController.createReview)",
-            "router.put('/:reviewId', authenticate, reviewController.updateReview)",
-            "router.delete('/:reviewId', authenticate, reviewController.deleteReview)"
+            "getReviewsByUser",
+            "createReview",
+            "updateReview",
+            "deleteReview"
         ],
         "variables": [
             "express",
@@ -1374,14 +1335,12 @@
         "language": "JavaScript"
     },
     ".\\routes\\userRoutes.js": {
-        "hash": "b812b92e5084db915386622a25e3f99d85aae9541375162ce30c3404b8f3e58c",
-        "summary": "The userRoutes.js file defines routes for user-related operations in an Express application. It includes middleware for authentication and uploading, and controllers for handling user profile data. The routes cover retrieving public profiles, updating user profiles, uploading portfolios and certifications, and removing portfolio items.",
+        "hash": "d73c7b06c8c7c3ea892e15f2a21902ea0d0d801ecc8eca2fc04e847f52259f62",
+        "summary": "This file contains Express.js routes for user-related operations, including getting public profiles, uploading portfolio and certifications, updating profiles, and deleting portfolio items. It uses middlewares for authentication and message uploads.",
         "functions": [
-            "getPublicProfile",
             "uploadPortfolio",
-            "updateProfile",
             "uploadCertifications",
-            "removePortfolioItem"
+            "updateProfile"
         ],
         "variables": [
             "router",
@@ -1392,7 +1351,7 @@
         "language": "JavaScript"
     },
     ".\\scripts\\importZipcode.js": {
-        "hash": "89e2f6e8ef1db1bb4fd7c33b6b6c9cc246912db621ee9d478c3f4ae80c99374c",
+        "hash": "40da0ea89b96247d0a7dda19755a1331d95eff453ba340a6c686263ac2103c5f",
         "summary": "The script reads zipcode data from a text file, processes it, and imports it into a MongoDB database using Mongoose.",
         "functions": [
             "fs.readFile",
@@ -1401,29 +1360,26 @@
         ],
         "variables": [
             "filePath",
-            "lines",
             "zipDocs",
             "err",
-            "data"
+            "data",
+            "lines"
         ],
         "language": "JavaScript"
     },
     ".\\services\\zipcodeService.js": {
-        "hash": "31f2de558a4dcd6793abc539184a86a0d97f16b7bfa78dd80c9fcbd10e9650b1",
-        "summary": "The file contains a JavaScript service for finding ZIP codes within a specified radius. It uses MongoDB's geospatial queries to determine nearby ZIP codes based on their locations.",
+        "hash": "e00bd113b4edbb285887919e70e148a0dbff6b03f05fb44af7b8e251280dd713",
+        "summary": "The zipcodeService.js file contains two asynchronous functions for finding ZIP codes within a specified radius. It uses MongoDB geospatial queries to find nearby ZIP codes and returns them as an array.",
         "functions": [
             "findZipcodesWithin",
             "findZipcodesWithinWithDistance"
         ],
-        "variables": [
-            "radiusInMeters",
-            "origin"
-        ],
+        "variables": [],
         "language": "JavaScript"
     },
     ".\\strategies\\passportStrategies.js": {
-        "hash": "267be6f55c029f096feb6d991efd6be0712162f998d009cd818193b56a227343",
-        "summary": "The passportStrategies.js file sets up authentication strategies using Passport.js for Google and Apple logins, serializes and deserializes user data using JWT, and interacts with a User model to find or create users based on OAuth profiles.",
+        "hash": "7bd14654b1bcd33ad7f2b29dbf0725006d31c2add2076a2fa6389273ce881f71",
+        "summary": "The file contains configuration for Passport.js strategies, including Google, Apple, and Facebook OAuth authentication. It also includes serialization and deserialization functions using JWT to manage user sessions.",
         "functions": [
             "serializeUser",
             "deserializeUser"
@@ -1432,6 +1388,7 @@
             "passport",
             "GoogleStrategy",
             "AppleStrategy",
+            "FacebookStrategy",
             "User",
             "jwt"
         ],
@@ -1461,24 +1418,22 @@
         "language": "JavaScript"
     },
     ".\\utils\\socketHandlers.js": {
-        "hash": "87c5796761cc6f5c01b9dc3595510e0bc287d2526693680fabceec7c2d7e0d70",
-        "summary": "The file sets up socket.io for handling real-time notifications and chat functionalities. It includes middleware to verify JWT tokens upon connection, manages online users with their socket IDs, and allows users to join conversations.",
+        "hash": "427909d5a5980efc43c4200fda8a51c0a33b1641a84d332c95128a209d0d73e9",
+        "summary": "This JavaScript file sets up Socket.IO for real-time communication, including JWT authentication and managing online users for notifications.",
         "functions": [
-            "setupSocketIO"
+            "setupSocketIO",
+            "io.use (middleware function)",
+            "io.on ('connection')",
+            "socket.on ('joinConversation')"
         ],
         "variables": [
-            "onlineUsers",
-            "token",
-            "decoded",
-            "io",
-            "socket",
-            "err"
+            "onlineUsers"
         ],
         "language": "JavaScript"
     },
     ".\\utils\\socketIOInstance.js": {
-        "hash": "c32ef18fb8d97d596ea6c4333d69d46ff902e722cd7e9d8ef68c09b8bb745eaf",
-        "summary": "This file exports a function to initialize and manage a Socket.io server. It sets up CORS with allowed origins, methods, and credentials, and includes event listeners for user connections and disconnections.",
+        "hash": "bbca1e98858822964ae1b74b1443ffbc2a30e370680aed1ba1e95e8ea33f801e",
+        "summary": "This JavaScript file exports functions to initialize and retrieve a Socket.IO server instance, configured with CORS settings and connection state recovery options. It also handles 'ping'/'pong' events for client-server communication.",
         "functions": [
             "init",
             "getIO"
@@ -1507,5 +1462,302 @@
             "APPLE_CALLBACK_URL"
         ],
         "language": "Environment variables configuration (dotenv)"
+    },
+    ".\\client\\src\\assets\\mascot.svg": {
+        "hash": "8399da4cf5ea55d792932e0fe1c29ff8e2f2363bf1d698b13394b2c18671edb1",
+        "summary": "The file contains an SVG image representing a mascot. The SVG is defined with paths and attributes specifying its shape, color, and size.",
+        "functions": [],
+        "variables": [],
+        "language": "SVG"
+    },
+    ".\\client\\src\\components\\RatingChart.jsx": {
+        "hash": "e67d01449d1bb1a6ccdff06a3d93581be6cfa6bbab337be05a2016199deaa400",
+        "summary": "This is a React component, RatingChart, which renders a star rating distribution chart based on an array of review objects. It calculates the distribution of ratings and displays them as horizontal bars with colored gradients.",
+        "functions": [
+            "RatingChart"
+        ],
+        "variables": [
+            "reviews",
+            "className",
+            "ratingCounts",
+            "totalReviews",
+            "count",
+            "percentage"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\client\\src\\components\\SkillBadge.jsx": {
+        "hash": "52fc389dcc2a999072f32473cfad9b70395814464fa8eb7ac17d227462cdc389",
+        "summary": "The SkillBadge.jsx file defines a React component called SkillBadge that uses Framer Motion for interactive animations. It takes three props: icon, label, and an optional className. The component renders a styled div with a blue icon and text label, scaling slightly on hover.",
+        "functions": [
+            "SkillBadge"
+        ],
+        "variables": [
+            "icon",
+            "label",
+            "className"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\client\\src\\components\\ui\\checkbox.tsx": {
+        "hash": "fa9b3554704e038c279016002efabb596c32a9fca04e8148cbddd8e8d509c412",
+        "summary": "The file defines a custom Checkbox component using React and Radix UI primitives. It includes styling for various states like checked, disabled, and focus states.",
+        "functions": [
+            "Checkbox"
+        ],
+        "variables": [
+            "className",
+            "props",
+            "ref"
+        ],
+        "language": "TypeScript"
+    },
+    ".\\client\\src\\components\\ui\\dropdown-menu.tsx": {
+        "hash": "755aea690889343eb417f2557e1bc6a0381da3b5aef826989967b373b84574dd",
+        "summary": "The file contains a TypeScript component for a dropdown menu using Radix UI primitives. It includes various sub-components like Trigger, Group, Portal, Sub, RadioGroup, and SubTrigger with custom styling and behavior.",
+        "functions": [
+            "DropdownMenuSubTrigger"
+        ],
+        "variables": [
+            "DropdownMenu",
+            "DropdownMenuTrigger",
+            "DropdownMenuGroup",
+            "DropdownMenuPortal",
+            "DropdownMenuSub",
+            "DropdownMenuRadioGroup"
+        ],
+        "language": "TypeScript"
+    },
+    ".\\client\\src\\pages\\GamificationGuide.jsx": {
+        "hash": "b80520521468c9ee0098bea78aa35dd5396da62b1d37f56c94705f8ff0fa0ae6",
+        "summary": "This is a React component called GamificationGuide, which presents features of a gamified platform with icons and descriptions. It uses the Framer Motion library for animations and imports various icons from Lucide React. The component defines an array of feature objects, each containing an icon, title, and content detailing how users can earn rewards.",
+        "functions": [],
+        "variables": [
+            "features"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\client\\src\\pages\\Leaderboard.jsx": {
+        "hash": "596e3e827ab4e65d8acb2204f02387812b53d86f3d20967ad725e9eb8f7ff5db",
+        "summary": "The file contains a React component for a leaderboard page that uses Framer Motion for animations, Axios for API requests, and Lucide React icons. It also includes a skeleton loading component to display while data is being fetched.",
+        "functions": [
+            "SkeletonRow"
+        ],
+        "variables": [
+            "motion",
+            "AnimatePresence",
+            "useState",
+            "useContext",
+            "useEffect",
+            "AuthContext",
+            "Link",
+            "useNavigate",
+            "axios",
+            "Trophy",
+            "Award",
+            "Zap",
+            "Clock",
+            "Flame",
+            "Star",
+            "Gem",
+            "Crown",
+            "Mascot"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\client\\src\\pages\\ViewRewards.jsx": {
+        "hash": "26bd78024c8cb909f1a192754f55ff852db6d74ffb149e79e3004d8bb7e8a06b",
+        "summary": "The file ViewRewards.jsx is a React component that displays user reward tiers. It uses Framer Motion for animations and imports various icons from Lucide React for visual representation. The component includes a skeleton loading screen to improve UX during data fetching.",
+        "functions": [
+            "SkeletonCard",
+            "RewardTier"
+        ],
+        "variables": [
+            "title",
+            "xpRequired",
+            "currentXP",
+            "rewards",
+            "icon",
+            "color",
+            "progress"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\controllers\\bookmarkController.js": {
+        "hash": "e2d0babcaaf019e670401564077f80f419db7fcf7d256efce0e5c77cfbcc234a",
+        "summary": "This JavaScript file contains two functions for handling bookmark operations related to gigs. It checks if a gig is bookmarked by a user and toggles the bookmark status.",
+        "functions": [
+            "checkBookmarkStatus",
+            "toggleBookmark"
+        ],
+        "variables": [
+            "Bookmark",
+            "Gig"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\controllers\\leaderboardController.js": {
+        "hash": "17cbfc242739826a1d335494b45c9a3588ce92fcb9ddc72a915bd655947d1379",
+        "summary": "The leaderboardController.js file exports a function to retrieve user data sorted by experience points (xp) within a specified timeframe. It filters users based on query parameters ('weekly' or 'monthly'), sorts them, and limits the results to 100 users. The controller also adds rank information to each user in the response.",
+        "functions": [
+            "getLeaderboard"
+        ],
+        "variables": [
+            "timeframe",
+            "dateFilter",
+            "users",
+            "rankedUsers"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\models\\Bookmark.js": {
+        "hash": "1baa3a5c45504a22e9c73d808aaa4e26a4efadc506c07ae84e8e10afd4ded2a6",
+        "summary": "The Bookmark.js file defines a Mongoose schema for bookmarking gigs by users. It includes fields for user ID, gig ID, and creation timestamp, with a unique compound index on user_id and gig_id to prevent duplicate bookmarks.",
+        "functions": [
+            "mongoose.Schema"
+        ],
+        "variables": [
+            "bookmarkSchema",
+            "user_id",
+            "gig_id",
+            "created_at"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\routes\\bookmarkRoutes.js": {
+        "hash": "81d47a333753a97f43aed59076e5b3c6f530f0d365fc4d5eb44252b5c356b1ae",
+        "summary": "This file defines routes for bookmark-related operations in an Express.js application. It includes middleware for authentication and controllers for checking bookmark status, toggling bookmarks, and retrieving user bookmarks.",
+        "functions": [
+            "checkBookmarkStatus",
+            "toggleBookmark",
+            "getUserBookmarks"
+        ],
+        "variables": [
+            "express",
+            "router",
+            "authenticate",
+            "checkBookmarkStatus",
+            "toggleBookmark",
+            "getUserBookmarks"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\routes\\leaderboardRoutes.js": {
+        "hash": "bd5dfba9678bd34f7c1fbc7fea4153f345b2099b1957e605727f5901fd82be94",
+        "summary": "This is a JavaScript file for setting up routes related to a leaderboard. It uses Express.js to define a GET route that calls the 'getLeaderboard' function from the '../controllers/leaderboardController' module.",
+        "functions": [
+            "getLeaderboard"
+        ],
+        "variables": [
+            "express",
+            "router"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\attachmentController.test.js": {
+        "hash": "fd6fbb58c06717de37f2030be487dbb24c4c0a21c36c1a682fc30daa050e14d4",
+        "summary": "The file contains test cases for an Attachment Controller using Chai and Sinon for mocking. It tests functionalities like uploading attachments and deleting them, ensuring proper handling of errors and successful operations.",
+        "functions": [
+            "uploadAttachmentGeneral",
+            "deleteAttachment"
+        ],
+        "variables": [
+            "Attachment",
+            "fsStub",
+            "controller"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\authController.test.js": {
+        "hash": "5d8a06e4bdfeb980d12f64fec811f757731fc10d1c4db48f5e072606b6e46a4a",
+        "summary": "The file contains unit tests for an authentication controller using Chai, Sinon, and Proxyquire. It mocks user models, bcrypt for password hashing, and JWT for token signing to test registration and login functionalities.",
+        "functions": [
+            "registerUser"
+        ],
+        "variables": [
+            "User",
+            "bcryptStub",
+            "jwtStub",
+            "controller"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\bidController.test.js": {
+        "hash": "aee42ed784f9ca129a3f25f5b06bbf42b0da5a2ae182d0b166d954536247419f",
+        "summary": "The file contains unit tests for a Bid Controller using Chai, Sinon, and Proxyquire. It sets up mocks for various models like Bid, Gig, Notification, Message, and Conversation to test controller methods.",
+        "functions": [
+            "findOne",
+            "find",
+            "save",
+            "deleteOne"
+        ],
+        "variables": [
+            "Bid",
+            "Gig",
+            "Notification",
+            "Message",
+            "Conversation",
+            "controller"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\gigController.test.js": {
+        "hash": "de67127e6e6b6838327a22d3a66b830c145873c6a92d631dee841cd7ed85a727",
+        "summary": "This file contains unit tests for a Gig Controller using Chai, Sinon, and Proxyquire. It sets up mock objects for Gig, Attachment, and Bid models to test various controller functions.",
+        "functions": [
+            "find",
+            "countDocuments",
+            "findById",
+            "deleteMany"
+        ],
+        "variables": [
+            "Gig",
+            "Attachment",
+            "Bid",
+            "controller"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\index.html": {
+        "hash": "e096dc6ddce2775b4d2873cb2f6e46cadb8b23d7ac8b0d03de253e287d5d6757",
+        "summary": "The file is an HTML document for a Gig Platform Prototype, featuring registration and login forms with validation.",
+        "functions": [],
+        "variables": [],
+        "language": "HTML"
+    },
+    ".\\tests\\messageController.test.js": {
+        "hash": "fe43e5df22048618888ac862e4ec7f23c2228c47bc4a114dbf0fdf5d2643c7f3",
+        "summary": "The file contains unit tests for a Message Controller using Chai, Sinon, and Proxyquire. It mocks models like Conversation, Message, and Notification to test various functionalities such as finding, saving, and deleting messages and conversations.",
+        "functions": [
+            "describe",
+            "beforeEach"
+        ],
+        "variables": [
+            "chai",
+            "sinon",
+            "proxyquire",
+            "expect",
+            "Conversation",
+            "Message",
+            "Notification",
+            "controller"
+        ],
+        "language": "JavaScript"
+    },
+    ".\\tests\\testRegime.js": {
+        "hash": "4ba7ea742953a80b7134f8a0897a4b0861ec169d956452e765456b6b4666e5b4",
+        "summary": "The file 'testRegime.js' contains code for setting up a test environment and defining functions to interact with an API. It uses Axios for HTTP requests, dotenv for environment variables, and defines arrays for users, gigs, and bids.",
+        "functions": [
+            "registerUser",
+            "loginUser"
+        ],
+        "variables": [
+            "API_BASE",
+            "corsOptions",
+            "users",
+            "gigs",
+            "bids"
+        ],
+        "language": "JavaScript"
     }
 }

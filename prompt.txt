@@ -3,11 +3,19 @@ I need to make the homepage look better and add a new search feature
 
 Relevant Files and Their Content:
 
-File: script_to_import_zipcodes.js
+File: path/to/Bookmark.js
 
 
 
-File: zipcode_service.js
+File: path/to/routes/bookmarkRoutes.js
+
+
+
+File: path/to/controllers/leaderboardController.js
+
+
+
+File: path/to/routes/leaderboardRoutes.js
 
 
 

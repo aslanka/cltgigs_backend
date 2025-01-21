@@ -1,4 +1,2391 @@
 
+--- controllers\attachmentController.js ---
+// controllers/attachmentController.js
+const Attachment = require('../models/Attachment');
+const fs = require('fs');
+const path = require('path');
+
+exports.uploadAttachmentGeneral = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { type, foreign_key_id } = req.body;
+
+    const attachment = new Attachment({
+      type,
+      foreign_key_id,
+      file_url: `/uploads/${req.file.filename}`
+    });
+    await attachment.save();
+    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id, file_url: attachment.file_url });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getAttachment = async (req, res) => {
+  try {
+    const { attachmentId } = req.params;
+    const attachment = await Attachment.findById(attachmentId);
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+    return res.json({ attachment });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const { attachmentId } = req.params;
+    const attachment = await Attachment.findById(attachmentId);
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    fs.unlink(path.join(__dirname, '..', attachment.file_url), (err) => {
+      if (err) console.error(err);
+    });
+
+    await Attachment.deleteOne({ _id: attachmentId });
+    return res.json({ message: 'Attachment deleted' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+--- controllers\authController.js ---
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+exports.registerUser = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword
+    });
+    await user.save();
+
+    return res.status(201).json({ message: 'User registered successfully' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET || 'supersecretkey',
+      { expiresIn: '1d' }
+    );
+
+    return res.json({ message: 'Login successful', token });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\bidController.js ---
+const Bid = require('../models/Bid');
+const Gig = require('../models/Gig');
+const { getIO } = require('../utils/socketIOInstance');
+const Notification = require('../models/Notification')
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+
+exports.createBid = async (req, res) => {
+  console.log('hid');
+  try {
+    const { gig_id, amount, message } = req.body;
+    const userId = req.user.userId;
+
+    // Check if the user has already placed a bid on this gig
+    const existingBid = await Bid.findOne({ gig_id, user_id: userId });
+    if (existingBid) {
+      return res.status(400).json({ error: 'You have already placed a bid on this gig.' });
+    }
+
+    const gig = await Gig.findById(gig_id).populate('user_id');
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    // Create a new bid
+    const newBid = new Bid({
+      gig_id,
+      user_id: userId,
+      amount,
+      message,
+    });
+    await newBid.save();
+
+    // Create a new conversation
+    const newConversation = new Conversation({
+      gig_id,
+      gig_owner_id: gig.user_id._id,
+      bidder_id: userId,
+      bid_id: newBid._id,
+    });
+    await newConversation.save();
+
+    // Add the conversation ID to the bid
+    newBid.conversation_id = newConversation._id;
+    await newBid.save();
+
+    // Create the initial message in the conversation
+    const initialMessage = new Message({
+      conversation_id: newConversation._id,
+      sender_id: userId,
+      content: message,
+    });
+    await initialMessage.save();
+
+    // Create a notification for the gig owner
+    const notification = new Notification({
+      user_id: gig.user_id._id,
+      type: 'bid',
+      message: `You have a new bid of $${amount} on your gig: ${gig.title}`,
+      link: `/gig/${gig_id}`,
+    });
+    await notification.save();
+
+    // Emit the notification to the gig owner via Socket.IO
+    const io = getIO();
+    io.to(gig.user_id._id.toString()).emit('newNotification', notification);
+
+    res.status(201).json({ message: 'Bid placed successfully', newBid });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Only the gig owner sees all bids; non-owner sees only their own
+exports.getBidsForGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    if (gig.user_id.toString() === userId) {
+      // Gig owner sees all bids with full user details
+      const bids = await Bid.find({ gig_id: gigId })
+        .populate('user_id', 'name profile_pic_url rating');
+      return res.json(bids);
+    } else {
+      // Non-owner sees only their own bid with full details
+      const yourBid = await Bid.findOne({ gig_id: gigId, user_id: userId })
+        .populate('user_id', 'name profile_pic_url rating');
+      if (!yourBid) return res.json([]);
+      return res.json([yourBid]);
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Accept a bid (gig owner only)
+exports.acceptBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can accept bids' });
+    }
+
+    // Mark bid as accepted
+    bid.accepted = true;
+    await bid.save();
+
+    // Update gig assignment if needed
+    bid.gig_id.assigned_bid = bid._id;
+    await bid.gig_id.save();
+
+    res.json({ message: 'Bid accepted', bidId: bid._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Deny a bid (gig owner only)
+exports.denyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can deny bids' });
+    }
+
+    // Mark bid as rejected instead of deleting
+    bid.rejected = true;
+    await bid.save();
+
+    // Optionally, remove related conversation or mark it inactive
+    // For example:
+    // await Conversation.findOneAndDelete({ gig_id: bid.gig_id._id, bidder_id: bid.user_id });
+
+    res.json({ message: 'Bid denied', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Optional undeny endpoint to revert a rejection
+exports.undenyBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can undeny bids' });
+    }
+
+    bid.rejected = false;
+    await bid.save();
+
+    res.json({ message: 'Bid undenied', bidId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getMyBids = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const bids = await Bid.find({ 
+      user_id: userId,
+      gig_id: { $exists: true } // Add this filter
+    })
+    .populate({
+      path: 'gig_id',
+      select: 'title description price user_id',
+      match: { _id: { $exists: true } } // Ensure gig exists
+    })
+    .populate('user_id', 'name profile_pic_url rating')
+    .exec();
+
+    // Filter out bids where gig_id was populated as null
+    const validBids = bids.filter(bid => bid.gig_id !== null);
+    
+    res.json(validBids);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Add to bidController.js
+exports.deleteBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const userId = req.user.userId;
+    
+    const bid = await Bid.findById(bidId);
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only bid creator can delete' });
+    }
+
+    await Bid.deleteOne({ _id: bidId });
+    res.json({ message: 'Bid deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateBidStatus = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.userId;
+
+    const bid = await Bid.findById(bidId).populate('gig_id');
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    if (bid.gig_id.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Only gig owner can update status' });
+    }
+
+    bid.status = status; // Add status field to Bid model
+    await bid.save();
+    
+    res.json({ message: 'Bid status updated', bid });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+--- controllers\bookmarkController.js ---
+const Bookmark = require('../models/Bookmark');
+const Gig = require('../models/Gig');
+
+exports.checkBookmarkStatus = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const bookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    res.json({ isBookmarked: !!bookmark });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    // Check if gig exists
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const existingBookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    if (existingBookmark) {
+      await Bookmark.deleteOne({ _id: existingBookmark._id });
+      return res.json({ isBookmarked: false });
+    }
+
+    const newBookmark = new Bookmark({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    await newBookmark.save();
+    res.json({ isBookmarked: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getUserBookmarks = async (req, res) => {
+  try {
+    const bookmarks = await Bookmark.find({ user_id: req.user.userId })
+      .populate({
+        path: 'gig_id',
+        populate: {
+          path: 'user_id',
+          select: 'name profile_pic_url'
+        }
+      })
+      .sort({ created_at: -1 });
+
+    res.json(bookmarks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+--- controllers\gigController.js ---
+const Gig = require('../models/Gig');
+const Bid = require('../models/Bid');
+const Attachment = require('../models/Attachment');
+const { resizeImage } = require('../middlewares/upload');
+const { findZipcodesWithinWithDistance } = require('../services/zipcodeService');
+
+exports.getAllGigs = async (req, res) => {
+  try {
+    const {
+      searchTerm = '',
+      category = 'All',
+      sortBy = 'date_desc',
+      page = 1,
+      limit = 20,
+      zipCode,
+      distance,
+      minBudget,
+      maxBudget,
+      isVolunteer,
+      tags,
+    } = req.query;
+
+    const filter = {};
+
+    // Search by text (title or description)
+    if (searchTerm) {
+      filter.$text = { $search: searchTerm };
+    }
+
+    // Filter by category
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // Filter by tags (array of strings)
+    if (tags) {
+      filter.tags = { $in: tags.split(',') };
+    }
+
+    // Filter by volunteer status
+    if (isVolunteer !== undefined) {
+      filter.is_volunteer = isVolunteer === 'true';
+    }
+
+    // Filter by budget range
+    if (minBudget && maxBudget) {
+      filter.calculated_average_budget = {
+        $gte: parseFloat(minBudget),
+        $lte: parseFloat(maxBudget),
+      };
+    } else if (minBudget) {
+      filter.calculated_average_budget = { $gte: parseFloat(minBudget) };
+    } else if (maxBudget) {
+      filter.calculated_average_budget = { $lte: parseFloat(maxBudget) };
+    }
+
+    // Filter by zipcode and distance
+    let distanceMap = {};
+    if (zipCode && distance) {
+      try {
+        const nearbyZipsWithDistance = await findZipcodesWithinWithDistance(
+          zipCode,
+          parseFloat(distance)
+        );
+        filter.zipcode = { $in: nearbyZipsWithDistance.map((nz) => nz.zip) };
+        nearbyZipsWithDistance.forEach((nz) => {
+          distanceMap[nz.zip] = nz.distance;
+        });
+      } catch (error) {
+        console.error('Error fetching nearby zip codes:', error);
+      }
+    }
+
+    // Sorting criteria
+    let sortCriteria;
+    if (searchTerm) {
+      sortCriteria = { score: { $meta: 'textScore' } };
+    } else {
+      switch (sortBy) {
+        case 'price_asc':
+          sortCriteria = { calculated_average_budget: 1 };
+          break;
+        case 'price_desc':
+          sortCriteria = { calculated_average_budget: -1 };
+          break;
+        case 'date_asc':
+          sortCriteria = { created_at: 1 };
+          break;
+        case 'date_desc':
+        default:
+          sortCriteria = { created_at: -1 };
+          break;
+      }
+    }
+
+    // Pagination
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Query gigs with filters, sorting, and pagination
+    let query = Gig.find(filter)
+      .populate('user_id', 'name profile_pic_url')
+      .skip(skip)
+      .limit(limitNum);
+
+    if (searchTerm) {
+      query = query.sort(sortCriteria).select({ score: { $meta: 'textScore' } });
+    } else {
+      query = query.sort(sortCriteria);
+    }
+
+    // Execute queries in parallel
+    const [gigs, total] = await Promise.all([
+      query.exec(),
+      Gig.countDocuments(filter),
+    ]);
+
+    // Fetch attachments for gigs
+    const gigIds = gigs.map((gig) => gig._id);
+    const attachments = await Attachment.find({
+      type: 'gig',
+      foreign_key_id: { $in: gigIds },
+    });
+
+    const attachmentsByGigId = {};
+    attachments.forEach((att) => {
+      attachmentsByGigId[att.foreign_key_id] = att;
+    });
+
+    // Add attachments and distance to gigs
+    const gigsWithAttachments = gigs.map((gig) => {
+      const gigObj = gig.toObject();
+      gigObj.attachment = attachmentsByGigId[gig._id] || null;
+      if (distanceMap[gig.zipcode]) {
+        gigObj.distance = distanceMap[gig.zipcode];
+      }
+      return gigObj;
+    });
+
+    // Aggregate bid counts for all fetched gigs
+    const bidsAgg = await Bid.aggregate([
+      { $match: { gig_id: { $in: gigIds } } },
+      { $group: { _id: '$gig_id', count: { $sum: 1 } } },
+    ]);
+
+    const bidCountMap = {};
+    bidsAgg.forEach((b) => {
+      bidCountMap[b._id.toString()] = b.count;
+    });
+
+    // Add bid count to gigs
+    gigsWithAttachments.forEach((gig) => {
+      gig.bidCount = bidCountMap[gig._id.toString()] || 0;
+    });
+
+    return res.json({ gigs: gigsWithAttachments, total });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+exports.createGig = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      category,
+      zipcode,
+      start_date,
+      completion_date,
+      team_size,
+      gig_tasks: gigTasksRaw,
+      budget_range_min,
+      budget_range_max,
+      is_volunteer: isVolunteerString,
+      tags,
+    } = req.body;
+
+    const userId = req.user.userId;
+
+    // Convert string boolean to actual boolean
+    const is_volunteer = isVolunteerString === 'true';
+
+    // Parse gig tasks from JSON string
+    let gig_tasks = [];
+    if (gigTasksRaw) {
+      try {
+        gig_tasks = JSON.parse(gigTasksRaw);
+        if (!Array.isArray(gig_tasks)) {
+          return res.status(400).json({ error: 'Gig tasks must be an array' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid gig tasks format' });
+      }
+    }
+
+    // Validate budget fields if not a volunteer gig
+    if (!is_volunteer) {
+      if (!budget_range_min || !budget_range_max) {
+        return res.status(400).json({ error: 'Budget range is required for non-volunteer gigs' });
+      }
+      if (isNaN(budget_range_min) || isNaN(budget_range_max)) {
+        return res.status(400).json({ error: 'Budget range must be valid numbers' });
+      }
+      if (parseFloat(budget_range_min) > parseFloat(budget_range_max)) {
+        return res.status(400).json({ error: 'Budget range min must be less than or equal to max' });
+      }
+    }
+
+    // Calculate average budget if not a volunteer gig
+    const calculated_average_budget = is_volunteer
+      ? null
+      : (parseFloat(budget_range_min) + parseFloat(budget_range_max)) / 2;
+
+    // Create gig object
+    const gig = new Gig({
+      user_id: userId,
+      title,
+      description,
+      category,
+      zipcode,
+      start_date: start_date || null,
+      completion_date: completion_date || null,
+      team_size: team_size || 1,
+      gig_tasks,
+      budget_range_min: is_volunteer ? null : parseFloat(budget_range_min),
+      budget_range_max: is_volunteer ? null : parseFloat(budget_range_max),
+      calculated_average_budget,
+      is_volunteer,
+      tags: tags ? tags.split(',') : [],
+    });
+
+    // Save gig to database
+    await gig.save();
+
+    // Handle attachment if file is uploaded
+    if (req.file) {
+      try {
+        await resizeImage(req.file.path);
+        await Attachment.create({
+          type: 'gig',
+          foreign_key_id: gig._id,
+          file_url: req.file.path,
+        });
+      } catch (error) {
+        console.error('Error handling attachment:', error);
+        return res.status(500).json({ error: 'Failed to process attachment' });
+      }
+    }
+
+    return res.status(201).json({ message: 'Gig created', gigId: gig._id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getGigDetails = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const gig = await Gig.findById(gigId).populate('user_id', 'name');
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const attachments = await Attachment.find({ type: 'gig', foreign_key_id: gigId });
+    return res.json({ gig, attachments });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getMyGigs = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const gigs = await Gig.find({ user_id: userId }).sort({ created_at: -1 });
+    return res.json(gigs);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    if (gig.user_id.toString() !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+    // Handle volunteer status first
+    const isVolunteer = req.body.is_volunteer === 'true';
+    gig.is_volunteer = isVolunteer;
+
+    // Reset budget fields for volunteer gigs
+    if (isVolunteer) {
+      gig.budget_range_min = null;
+      gig.budget_range_max = null;
+      gig.calculated_average_budget = null;
+    } else {
+      // Validate and set budget for paid gigs
+      const min = parseFloat(req.body.budget_range_min);
+      const max = parseFloat(req.body.budget_range_max);
+
+      if (isNaN(min) || isNaN(max) || min < 0 || max < 0 || min > max) {
+        return res.status(400).json({ error: 'Invalid budget range' });
+      }
+
+      gig.budget_range_min = min;
+      gig.budget_range_max = max;
+      gig.calculated_average_budget = (min + max) / 2;
+    }
+
+    // Update other fields
+    gig.title = req.body.title || gig.title;
+    gig.description = req.body.description || gig.description;
+    gig.category = req.body.category || gig.category;
+    gig.zipcode = req.body.zipcode || gig.zipcode;
+    gig.start_date = req.body.start_date || null;
+    gig.completion_date = req.body.completion_date || null;
+    gig.team_size = parseInt(req.body.team_size) || 1;
+
+    // Handle tasks
+    try {
+      gig.gig_tasks = req.body.gig_tasks ? JSON.parse(req.body.gig_tasks) : [];
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid tasks format' });
+    }
+
+    // Handle tags
+    gig.tags = req.body.tags ? 
+      req.body.tags.split(',').map(t => t.trim()).filter(t => t) : 
+      [];
+
+    // Handle file upload
+    if (req.file) {
+      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+      await Attachment.create({
+        type: 'gig',
+        foreign_key_id: gigId,
+        file_url: req.file.path
+      });
+    }
+
+    const updatedGig = await gig.save();
+    res.json({ message: 'Gig updated successfully', gig: updatedGig });
+
+  } catch (err) {
+    console.error('Update error:', err);
+    res.status(500).json({ error: 'Server error during update' });
+  }
+};
+exports.deleteGig = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    if (gig.user_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Delete gig and attachments
+    await Gig.findByIdAndDelete(gigId);
+    await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+
+    return res.json({ message: 'Gig deleted' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+
+--- controllers\leaderboardController.js ---
+const User = require('../models/User'); // Add this import at the top
+
+// controllers/leaderboardController.js
+exports.getLeaderboard = async (req, res) => {
+    try {
+      const { timeframe } = req.query;
+      
+      let dateFilter = {};
+      if (timeframe === 'weekly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
+      } else if (timeframe === 'monthly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
+      }
+  
+      const users = await User.aggregate([
+        { $match: dateFilter },
+        { $sort: { xp: -1 } },
+        { $project: { name: 1, profile_pic_url: 1, xp: 1, badges: 1 } },
+        { $limit: 100 }
+      ]);
+  
+      // Add ranks
+      const rankedUsers = users.map((user, index) => ({
+        ...user,
+        rank: index + 1
+      }));
+  
+      res.json(rankedUsers);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  };
+
+--- controllers\messageController.js ---
+// controllers/messageController.js
+const { getIO } = require('../utils/socketIOInstance');
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+const User = require('../models/User');
+const Gig = require('../models/Gig');
+const Bid = require('../models/Bid');
+const mongoose = require('mongoose');
+// We'll emit to socket.io from within these methods:
+const Notification = require('../models/Notification');
+// We'll create a shared instance
+
+// GET /api/messages (all conversations for user)
+exports.getAllConversationsForUser = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const conversations = await Conversation.find({
+      $or: [
+        { gig_owner_id: userId },
+        { bidder_id: userId }
+      ]
+    })
+      .sort({ created_at: -1 })
+      .lean();
+
+    // Populate conversation data
+    for (let conv of conversations) {
+      const gig = await Gig.findById(conv.gig_id).lean();
+      conv.gigTitle = gig ? gig.title : 'No Title';
+
+      const otherUserId = (conv.gig_owner_id.toString() === userId)
+        ? conv.bidder_id
+        : conv.gig_owner_id;
+      const otherUser = await User.findById(otherUserId).lean();
+      conv.otherUserName = otherUser?.name || 'Unknown User';
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
+      conv.otherUserId = otherUserId.toString();
+      conv.gigId = conv.gig_id.toString();
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
+
+      // Mark if conversation is blocked for the current user
+      if (conv.gig_owner_id.toString() === userId && conv.blocked_by_owner) {
+        conv.isBlocked = true;
+      } else if (conv.bidder_id.toString() === userId && conv.blocked_by_bidder) {
+        conv.isBlocked = true;
+      } else {
+        conv.isBlocked = false;
+      }
+    }
+
+    res.json(conversations);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// GET /api/messages/:conversationId
+exports.getConversationMessages = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Check if user is part of this conversation
+    if (
+      conversation.gig_owner_id.toString() !== userId &&
+      conversation.bidder_id.toString() !== userId
+    ) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    // Check if user has blocked conversation
+    if (
+      (conversation.gig_owner_id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.json([]); // Return empty if blocked from own side
+    }
+
+    const msgs = await Message.find({ conversation_id: conversationId })
+      .sort({ created_at: 1 })
+      .lean();
+
+    res.json(msgs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.sendMessage = async (req, res) => {
+  try {
+    const { conversationId, content, file_url } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Missing conversationId' });
+    }
+
+    const userId = req.user.userId;
+
+    // Fetch the sender's details
+    const sender = await User.findById(userId);
+    if (!sender) {
+      return res.status(404).json({ error: 'Sender not found' });
+    }
+
+    const conversation = await Conversation.findById(conversationId).populate('gig_owner_id bidder_id');
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Check if the user is part of the conversation
+    if (
+      conversation.gig_owner_id._id.toString() !== userId &&
+      conversation.bidder_id._id.toString() !== userId
+    ) {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    // Check if the conversation is blocked
+    if (
+      (conversation.gig_owner_id._id.toString() === userId && conversation.blocked_by_owner) ||
+      (conversation.bidder_id._id.toString() === userId && conversation.blocked_by_bidder)
+    ) {
+      return res.status(403).json({ error: 'Conversation blocked' });
+    }
+
+    // Create and save the new message
+    const newMsg = new Message({
+      conversation_id: conversationId,
+      sender_id: userId,
+      content,
+      file_url,
+    });
+    await newMsg.save();
+
+    // Emit the new message to the conversation room with sender details
+    const io = getIO();
+    io.to(conversationId).emit('newMessage', {
+      _id: newMsg._id.toString(),
+      conversation_id: newMsg.conversation_id.toString(),
+      sender_id: newMsg.sender_id.toString(),
+      content: newMsg.content,
+      file_url: newMsg.file_url,
+      created_at: newMsg.created_at,
+      // Additional sender info
+      sender_name: sender.name,
+      sender_pic: sender.profile_pic_url,
+    });
+
+    // Determine the recipient of the message
+    const recipientId = conversation.gig_owner_id._id.toString() === userId
+      ? conversation.bidder_id._id
+      : conversation.gig_owner_id._id;
+
+    // Create a notification for the recipient
+    const notification = new Notification({
+      user_id: recipientId,
+      type: 'message',
+      message: `You have a new message from ${sender.name}`,
+      link: `/messages/${conversationId}`,
+    });
+    await notification.save();
+
+    // Emit the notification to the recipient
+    io.to(recipientId.toString()).emit('newNotification', notification);
+
+    return res.status(201).json({ message: 'Message sent', newMsg });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+// In the deleteMessage function
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.userId;
+
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    // Only sender can delete
+    if (msg.sender_id.toString() !== userId) {
+      return res.status(403).json({ error: 'Cannot delete others messages' });
+    }
+
+    await Message.deleteOne({ _id: messageId });
+
+    // Use getIO() instead of direct io
+    const io = getIO();
+    io.to(msg.conversation_id.toString()).emit('messageDeleted', { messageId });
+
+    res.json({ message: 'Message deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:messageId/report
+exports.reportMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const msg = await Message.findById(messageId);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    msg.reported = true;
+    await msg.save();
+    res.json({ message: 'Message reported' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/block
+exports.blockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = true;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = true;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation blocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/messages/:conversationId/unblock
+exports.unblockConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.gig_owner_id.toString() === userId) {
+      conversation.blocked_by_owner = false;
+    } else if (conversation.bidder_id.toString() === userId) {
+      conversation.blocked_by_bidder = false;
+    } else {
+      return res.status(403).json({ error: 'Not part of this conversation' });
+    }
+
+    await conversation.save();
+    res.json({ message: 'Conversation unblocked' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    await Conversation.findByIdAndDelete(conversationId);
+    res.json({ message: 'Conversation deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\notificationController.js ---
+// controllers/notificationController.js
+const Notification = require('../models/Notification');
+
+// Get all notifications for a user
+exports.getNotifications = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const notifications = await Notification.find({ user_id: userId })
+      .sort({ created_at: -1 }) // Sort by most recent first
+      .limit(50); // Limit to 50 notifications
+    res.json(notifications);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Mark a notification as read
+exports.markAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { read: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    res.json({ message: 'Notification marked as read', notification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Mark all notifications as read
+exports.markAllAsRead = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    await Notification.updateMany(
+      { user_id: userId, read: false },
+      { read: true }
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Delete a notification
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    await Notification.findByIdAndDelete(notificationId);
+    res.json({ message: 'Notification deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+--- controllers\reviewController.js ---
+const Review = require('../models/Review');
+const User = require('../models/User');
+
+// Get reviews for a specific user
+exports.getReviewsByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const reviews = await Review.find({ user_id: userId })
+      .populate('reviewer_id', 'name profile_pic_url')  // Ensure this line is present
+      .sort({ date: -1 });
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+// Create a new review for a user
+exports.createReview = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const reviewerId = req.user.userId; // assumes authentication middleware sets req.user
+
+    // Verify user and reviewer exist
+    const user = await User.findById(userId);
+    const reviewer = await User.findById(reviewerId);
+    if (!user || !reviewer) {
+      return res.status(404).json({ error: 'User or reviewer not found' });
+    }
+
+    const { rating, comment } = req.body;
+    if (!rating || !comment) {
+      return res.status(400).json({ error: 'Rating and comment are required' });
+    }
+
+    const newReview = new Review({
+      user_id: userId,
+      reviewer_id: reviewerId,
+      rating,
+      comment
+    });
+
+    await newReview.save();
+    res.status(201).json(newReview);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Update a review by its ID (optional - if reviews are editable)
+exports.updateReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const reviewerId = req.user.userId;
+
+    // Only allow the original reviewer to update
+    const review = await Review.findById(reviewId);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.reviewer_id.toString() !== reviewerId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { rating, comment } = req.body;
+    if (rating !== undefined) review.rating = rating;
+    if (comment !== undefined) review.comment = comment;
+    review.date = new Date();
+    
+    await review.save();
+    res.json(review);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Delete a review (optional)
+exports.deleteReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const reviewerId = req.user.userId;
+
+    const review = await Review.findById(reviewId);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.reviewer_id.toString() !== reviewerId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await review.remove();
+    res.json({ message: 'Review deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- controllers\userController.js ---
+const User = require('../models/User');
+
+// Get public profile by userId
+exports.getPublicProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.checkBlockStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = await User.findById(req.user.userId);
+    
+    const isBlocked = currentUser.blockedUsers.includes(userId);
+    res.json({ isBlocked });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// controllers/userController.js
+exports.uploadCertifications = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const files = req.files;
+
+    const fileUrls = files.map((file) => `/uploads/${file.filename}`);
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { certifications: { $each: fileUrls } } },
+      { new: true }
+    );
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updatedData = req.body;
+
+    // Exclude fields that should not be updated directly
+    delete updatedData.name; 
+
+    const user = await User.findByIdAndUpdate(userId, updatedData, { new: true });
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.uploadPortfolio = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const files = req.files;
+
+    const fileUrls = files.map((file) => `/uploads/${file.filename}`);
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { portfolio: { $each: fileUrls } } },
+      { new: true }
+    );
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.removePortfolioItem = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { fileUrl } = req.body;
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $pull: { portfolio: fileUrl } },
+      { new: true }
+    );
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+--- middlewares\auth.js ---
+const jwt = require('jsonwebtoken');
+
+exports.authenticate = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'No authorization header' });
+  }
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { userId: ..., email: ... }
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+};
+
+
+--- middlewares\upload.js ---
+const multer = require('multer');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
+const fsPromises = fs.promises;
+
+// Create a disk storage to store original files temporarily
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/'); // Make sure this folder exists
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// Filter to only allow images for gig attachments
+function gigFileFilter(req, file, cb) {
+  if (!file.mimetype.startsWith('image/')) {
+    return cb(new Error('Only images are allowed for gig attachments'), false);
+  }
+  cb(null, true);
+}
+
+function generalFileFilter(req, file, cb) {
+  // For message attachments we can allow any file type, or implement more checks
+  cb(null, true);
+}
+
+const gigUpload = multer({
+  storage: storage,
+  fileFilter: gigFileFilter
+});
+
+const messageUpload = multer({
+  storage: storage,
+  fileFilter: generalFileFilter
+});
+
+// A helper function to resize images if needed
+async function resizeImage(filePath, width = 800, height = 800) {
+  const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
+  try {
+    await sharp(filePath)
+      .resize({ width, height, fit: 'inside' })
+      .toFile(newFilePath);
+  } catch (sharpErr) {
+    console.error('Error resizing image:', sharpErr);
+    throw sharpErr;
+  }
+
+  try {
+    if (await fsPromises.access(filePath).then(() => true).catch(() => false)) {
+      await fsPromises.unlink(filePath);
+    }
+  } catch (unlinkErr) {
+    console.error('Error deleting original file:', unlinkErr);
+  }
+
+  try {
+    await fsPromises.rename(newFilePath, filePath);
+  } catch (renameErr) {
+    console.error('Error renaming resized file:', renameErr);
+  }
+}
+
+module.exports = {
+  gigUpload,
+  messageUpload,
+  resizeImage
+};
+
+
+--- models\Attachment.js ---
+const mongoose = require('mongoose');
+
+const attachmentSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['gig', 'message', 'bid', 'profile', 'portfolio'],
+    required: true
+  },
+  foreign_key_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
+  file_url: { type: String, required: true },
+  uploaded_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Attachment', attachmentSchema);
+
+
+--- models\Bid.js ---
+const mongoose = require('mongoose');
+
+const bidSchema = new mongoose.Schema({
+  gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  amount: { type: Number, required: true },
+  message: { type: String }, // initial message
+  accepted: { type: Boolean, default: false },
+  rejected: { type: Boolean, default: false },
+  conversation_id: { type: mongoose.Schema.Types.ObjectId }, // Added field
+  created_at: { type: Date, default: Date.now },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected'],
+    default: 'pending'
+  }
+});
+
+bidSchema.index({ gig_id: 1, user_id: 1 }, { unique: true });
+
+module.exports = mongoose.model('Bid', bidSchema);
+
+
+
+--- models\Bookmark.js ---
+const mongoose = require('mongoose');
+
+const bookmarkSchema = new mongoose.Schema({
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  gig_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Gig',
+    required: true
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Add compound index to ensure unique bookmarks
+bookmarkSchema.index({ user_id: 1, gig_id: 1 }, { unique: true });
+
+module.exports = mongoose.model('Bookmark', bookmarkSchema);
+
+--- models\Conversation.js ---
+const mongoose = require('mongoose');
+
+const conversationSchema = new mongoose.Schema({
+  gig_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Gig', required: true },
+  gig_owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  bidder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  bid_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Bid', required: true },
+  blocked_by_owner: { type: Boolean, default: false },
+  blocked_by_bidder: { type: Boolean, default: false },
+  locked: { type: Boolean, default: false },  // Newly added field
+  created_at: { type: Date, default: Date.now }
+});
+
+
+module.exports = mongoose.model('Conversation', conversationSchema);
+
+
+--- models\Gig.js ---
+const mongoose = require('mongoose');
+
+const gigSchema = new mongoose.Schema({
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  category: { type: String, required: true }, // Updated to string for flexibility
+  zipcode: { type: String, required: true }, // Required zipcode
+  start_date: { type: Date }, // Optional start date
+  completion_date: { type: Date }, // Optional completion date
+  created_at: { type: Date, default: Date.now }, // Automatically set
+  team_size: { type: Number, default: 1 }, // Default team size is 1
+  gig_tasks: { type: [String], default: [] }, // Array of tasks
+  budget_range_min: { type: Number }, // Required if not volunteer
+  budget_range_max: { type: Number }, // Required if not volunteer
+  calculated_average_budget: { 
+    type: Number,
+    default: null,
+    validate: {
+      validator: function(v) {
+        // Allow null for volunteer gigs and numbers for paid gigs
+        return v === null || Number.isFinite(v);
+      },
+      message: '{VALUE} is not a valid number or null'
+    }
+  },
+  is_volunteer: { type: Boolean, default: false }, // Default to false
+  tags: { type: [String], default: [] }, // Array of tags
+ 
+},
+{ timestamps: true });
+
+// Index for zipcode and created_at for faster queries
+gigSchema.index({ zipcode: 1 });
+gigSchema.index({ created_at: -1 });
+gigSchema.index({ category: 1, is_volunteer: 1, calculated_average_budget: 1 });
+
+module.exports = mongoose.model('Gig', gigSchema);
+
+--- models\Message.js ---
+const mongoose = require('mongoose');
+
+const messageSchema = new mongoose.Schema({
+  conversation_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Conversation',
+    required: true
+  },
+  sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, default: '' },
+  file_url: { type: String, default: '' }, // If there's an attachment
+  reported: { type: Boolean, default: false },
+  created_at: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Message', messageSchema);
+
+
+--- models\Notification.js ---
+// models/Notification.js
+const mongoose = require('mongoose');
+
+const notificationSchema = new mongoose.Schema({
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // User who receives the notification
+  type: { type: String, required: true, enum: ['message', 'bid'] }, // Type of notification
+  message: { type: String, required: true }, // Notification message
+  read: { type: Boolean, default: false }, // Whether the notification has been read
+  link: { type: String }, // Optional link to redirect the user (e.g., to a message or gig)
+  created_at: { type: Date, default: Date.now }, // Timestamp
+});
+
+module.exports = mongoose.model('Notification', notificationSchema);
+
+--- models\Report.js ---
+// models/Report.js
+const mongoose = require('mongoose');
+
+const reportSchema = new mongoose.Schema({
+  reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  contentId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  contentType: { type: String, required: true },
+  reportDetails: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+});
+
+module.exports = mongoose.model('Report', reportSchema);
+
+--- models\Review.js ---
+const mongoose = require('mongoose');
+
+const reviewSchema = new mongoose.Schema({
+  user_id: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  reviewer_id: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  rating: { 
+    type: Number, 
+    required: true 
+  },
+  comment: { 
+    type: String, 
+    required: true 
+  },
+  date: { 
+    type: Date, 
+    default: Date.now 
+  }
+});
+
+
+module.exports = mongoose.model('Review', reviewSchema);
+
+
+--- models\User.js ---
+// models/User.js
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  // Personal Information
+  name: { type: String, required: true },
+  profile_pic_url: { type: String },
+  tagline: { type: String },
+
+  // Contact Information
+  preferred_communication: { type: String, enum: ['platform', 'email', 'phone'] },
+  social_media_links: { type: [String], default: [] },
+  location: { type: String },
+  service_area: { type: String },
+
+  // Skills and Expertise
+  services_offered: { type: [String], default: [] }, // Tags
+  specializations: { type: [String], default: [] }, // Tags
+  certifications: { type: [String], default: [] }, // File URLs
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  experience: { type: Number, default: 0 },
+
+  // Availability
+  working_hours: { type: String },
+  calendar_link: { type: String },
+
+  // Portfolio/Work Samples
+  portfolio: { type: [String], default: [] }, // File URLs
+  testimonials: { type: [String], default: [] }, // Testimonial texts
+
+  // Reviews and Ratings
+  reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Review' }],
+  rating: { type: Number, default: 0 },
+
+  // Pricing and Payment Details
+  rate_card: { type: String },
+  payment_methods: { type: [String], default: [] },
+
+  // About Section
+  bio: { type: String },
+
+  // Trust and Safety
+  background_check: { type: Boolean, default: false },
+  insurance_details: { type: String },
+
+  // Platform-Specific Features
+  response_time: { type: String },
+  completed_jobs: { type: Number, default: 0 },
+  verified_badges: { type: [String], default: [] },
+
+  // Call-to-Action
+  request_service_link: { type: String },
+  is_favorite: { type: Boolean, default: false },
+
+  // Additional Details
+  languages_spoken: { type: [String], default: [] }, // Tags
+  faqs: { type: [String], default: [] },
+  disclaimers: { type: String },
+
+  // Default Fields
+  email: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+  created_at: { type: Date, default: Date.now },
+
+  xp: { type: Number, default: 0 },
+  badges: { type: [String], default: [] }, // Ensure default empty array
+  rank: { type: Number },
+  completed_gigs: { type: Number, default: 0 },
+
+  redeemedRewards: [{ 
+    rewardId: mongoose.Schema.Types.ObjectId,
+    redeemedAt: Date 
+  }],
+  unlockedTiers: [String],
+
+  googleId: { type: String, unique: true, sparse: true },
+facebookId: { type: String, unique: true, sparse: true },
+appleId: { type: String, unique: true, sparse: true },
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+--- models\Zipcode.js ---
+// models/Zipcode.js
+const mongoose = require('mongoose');
+
+const zipcodeSchema = new mongoose.Schema({
+  zip: { type: String, required: true, unique: true },
+  location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { 
+      type: [Number], // [longitude, latitude]
+      required: true
+    }
+  }
+});
+
+// Create a 2dsphere index for geospatial queries
+zipcodeSchema.index({ location: '2dsphere' });
+
+module.exports = mongoose.model('Zipcode', zipcodeSchema);
+
+
+--- routes\attachmentRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const {
+  uploadAttachmentGeneral,
+  getAttachment,
+  deleteAttachment
+} = require('../controllers/attachmentController');
+
+const { authenticate } = require('../middlewares/auth');
+const { messageUpload } = require('../middlewares/upload');
+
+// General file upload endpoint
+router.post('/', authenticate, messageUpload.single('file'), uploadAttachmentGeneral);
+router.get('/:attachmentId', getAttachment);
+router.delete('/:attachmentId', authenticate, deleteAttachment);
+
+module.exports = router;
+
+
+--- routes\authRoutes.js ---
+const express = require('express');
+const passport = require('passport');
+const { registerUser, loginUser } = require('../controllers/authController');
+const jwt = require('jsonwebtoken');
+const router = express.Router();
+
+// Existing email/password routes
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+
+// Helper to generate JWT after OAuth success
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user._id, email: user.email },
+    process.env.JWT_SECRET || 'supersecretkey',
+    { expiresIn: '1d' }
+  );
+};
+
+
+router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
+
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
+router.get(
+  '/google',
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Optional: Force account selection
+  })
+);
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=google`
+  }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
+router.post(
+  '/apple',
+  passport.authenticate('apple', { session: false }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
+module.exports = router;
+
+
+--- routes\bidRoutes.js ---
+// routes/bidRoutes.js
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const { 
+  createBid, 
+  getBidsForGig, 
+  acceptBid,
+  denyBid,
+  getMyBids,  // MOVE THIS ROUTE UP
+  undenyBid,
+  deleteBid,
+  updateBidStatus,
+} = require('../controllers/bidController');
+
+// Correct order of routes
+router.post('/', authenticate, createBid);
+router.get('/my', authenticate, getMyBids); // This should come FIRST
+router.get('/:gigId', authenticate, getBidsForGig); // This comes AFTER
+router.post('/:bidId/accept', authenticate, acceptBid);
+router.post('/:bidId/deny', authenticate, denyBid);
+router.post('/:bidId/undeny', authenticate, undenyBid);
+// Add to bidRoutes.js
+router.delete('/:bidId', authenticate, deleteBid);
+router.patch('/:bidId/status', authenticate, updateBidStatus);
+
+module.exports = router;
+
+--- routes\bookmarkRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  checkBookmarkStatus,
+  toggleBookmark,
+  getUserBookmarks
+} = require('../controllers/bookmarkController');
+
+router.get('/check/:gigId', authenticate, checkBookmarkStatus);
+router.post('/toggle/:gigId', authenticate, toggleBookmark);
+router.get('/user', authenticate, getUserBookmarks);
+
+module.exports = router;
+
+--- routes\gigRoutes.js ---
+// gigRoutes.js (updated)
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const { gigUpload } = require('../middlewares/upload');
+const {
+  getAllGigs,
+  createGig,
+  getGigDetails,
+  getMyGigs,
+  updateGig,
+  deleteGig
+} = require('../controllers/gigController');
+
+// Public can see all gigs
+router.get('/', getAllGigs);
+
+// Auth user can create a gig
+router.post('/', authenticate, gigUpload.single('gigImage'), createGig);
+
+// Public can see gig details
+router.get('/:gigId', getGigDetails);
+
+// Auth user can see their own gigs
+router.get('/mygigs/owner', authenticate, getMyGigs);
+
+// Auth user can edit gig
+router.put('/:gigId', authenticate, gigUpload.single('gigImage'), updateGig);
+
+// Auth user can delete gig
+router.delete('/:gigId', authenticate, deleteGig);
+
+module.exports = router;
+
+
+--- routes\leaderboardRoutes.js ---
+// routes/leaderboardRoutes.js
+const express = require('express');
+const router = express.Router();
+const { getLeaderboard } = require('../controllers/leaderboardController');
+
+router.get('/', getLeaderboard);
+
+module.exports = router;
+
+--- routes\messageRoutes.js ---
+// routes/messageRoutes.js
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  getAllConversationsForUser,
+  getConversationMessages,
+  sendMessage,
+  deleteMessage,
+  deleteConversation,
+  reportMessage,
+  blockConversation,
+  unblockConversation
+} = require('../controllers/messageController');
+
+// GET all user conversations
+router.get('/', authenticate, getAllConversationsForUser);
+
+// GET messages for a specific conversation
+router.get('/:conversationId', authenticate, getConversationMessages);
+
+// POST a new message
+router.post('/', authenticate, sendMessage);
+
+// DELETE a specific message
+router.delete('/:messageId', authenticate, deleteMessage);
+router.post('/:messageId/report', authenticate, reportMessage);
+router.post('/:conversationId/block', authenticate, blockConversation);
+router.post('/:conversationId/unblock', authenticate, unblockConversation);
+// In messageRoutes.js
+router.delete('/conversation/:conversationId', authenticate, deleteConversation);
+
+
+module.exports = router;
+
+
+--- routes\notificationRoutes.js ---
+// routes/notificationRoutes.js
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  getNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+} = require('../controllers/notificationController');
+
+// Get all notifications for the authenticated user
+router.get('/', authenticate, getNotifications);
+
+// Mark a notification as read
+router.put('/:notificationId/read', authenticate, markAsRead);
+
+// Mark all notifications as read
+router.put('/read-all', authenticate, markAllAsRead);
+
+// Delete a notification
+router.delete('/:notificationId', authenticate, deleteNotification);
+
+module.exports = router;
+
+--- routes\reportRoutes.js ---
+// routes/reportRoutes.js
+const express = require('express');
+const router = express.Router();
+const Report = require('../models/Report'); // Assuming you have a Report model
+const { authenticate } = require('../middlewares/auth');
+
+router.post('/', authenticate, async (req, res) => {
+  try {
+    const { reporterId, creatorId, contentId, contentType, reportDetails, timestamp } = req.body;
+
+    const newReport = new Report({
+      reporterId,
+      creatorId,
+      contentId,
+      contentType,
+      reportDetails,
+      timestamp,
+    });
+
+    await newReport.save();
+    res.status(201).json({ message: 'Report submitted successfully' });
+  } catch (error) {
+    console.error('Error submitting report:', error);
+    res.status(500).json({ error: 'Failed to submit report' });
+  }
+});
+
+module.exports = router;
+
+--- routes\reviewRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const reviewController = require('../controllers/reviewController');
+
+// Get all reviews for a user
+router.get('/user/:userId', reviewController.getReviewsByUser);
+
+// Create a new review for a user (requires authentication)
+router.post('/user/:userId', authenticate, reviewController.createReview);
+
+// Update a review by id (optional, if needed)
+router.put('/:reviewId', authenticate, reviewController.updateReview);
+
+// Delete a review by id (optional, if needed)
+router.delete('/:reviewId', authenticate, reviewController.deleteReview);
+
+module.exports = router;
+
+
+--- routes\userRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const userController = require('../controllers/userController');
+
+
+const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
+const { messageUpload } = require('../middlewares/upload');
+
+// Public profile
+router.get('/:userId', userController.getPublicProfile);
+
+router.post('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+router.put('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+
+// Update user profile
+router.put('/:userId', authenticate, userController.updateProfile);
+
+// routes/userRoutes.js
+router.post('/:userId/certifications', authenticate, messageUpload.array('certifications'), uploadCertifications);
+router.put('/:userId', authenticate, updateProfile);
+
+// In your Express routes:
+router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
+
+router.get('/:userId/block-status', authenticate, userController.checkBlockStatus);
+
+
+module.exports = router;
+
+
+--- strategies\passportStrategies.js ---
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const AppleStrategy = require('passport-apple').Strategy;
+const FacebookStrategy = require('passport-facebook').Strategy;
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+
+// Serialize and deserialize user if needed (here using JWT, so can be minimal)
+passport.serializeUser((user, done) => done(null, user.id));
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await User.findById(id);
+    done(null, user);
+  } catch (err) {
+    done(err, null);
+  }
+});
+
+// Google Strategy
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+      proxy: true // Add this if using reverse proxy/load balancer
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ 
+          $or: [
+            { googleId: profile.id },
+            { email: profile.emails[0].value }
+          ]
+        });
+
+        if (!user) {
+          user = new User({
+            name: profile.displayName,
+            email: profile.emails[0].value,
+            googleId: profile.id,
+            password: ''
+          });
+          await user.save();
+        } else if (!user.googleId) {
+          user.googleId = profile.id;
+          await user.save();
+        }
+
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  )
+);
+
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+      profileFields: ['id', 'emails', 'name']
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ facebookId: profile.id });
+        if (!user) {
+          user = await User.findOne({ email: profile.emails[0].value });
+          if (user) {
+            user.facebookId = profile.id;
+          } else {
+            user = new User({
+              name: `${profile.name.givenName} ${profile.name.familyName}`,
+              email: profile.emails[0].value,
+              facebookId: profile.id,
+              password: ''
+            });
+          }
+          await user.save();
+        }
+        done(null, user);
+      } catch (err) {
+        done(err, null);
+      }
+    }
+  )
+);
+
+// Apple Strategy
+passport.use(
+  new AppleStrategy(
+    {
+      clientID: process.env.APPLE_CLIENT_ID,
+      teamID: process.env.APPLE_TEAM_ID,
+      keyID: process.env.APPLE_KEY_ID,
+      privateKeyString: process.env.APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      callbackURL: process.env.APPLE_CALLBACK_URL,
+      scope: ['name', 'email']
+    },
+    async (accessToken, refreshToken, idToken, profile, done) => {
+      try {
+        // Find or create user
+        let user = await User.findOne({ appleId: profile.id });
+        if (!user) {
+          // If email exists with another method, update record; otherwise create new.
+          user = await User.findOne({ email: profile.email });
+          if (user) {
+            user.appleId = profile.id;
+          } else {
+            user = new User({
+              name: profile.name ? `${profile.name.firstName} ${profile.name.lastName}` : 'Apple User',
+              email: profile.email,
+              appleId: profile.id,
+              password: '', // no password since it's OAuth
+            });
+          }
+          await user.save();
+        }
+        done(null, user);
+      } catch (err) {
+        done(err, null);
+      }
+    }
+  )
+);
+
+
+--- utils\socketHandlers.js ---
+// utils/socketHandlers.js
+const jwt = require('jsonwebtoken');
+const Notification = require('../models/Notification');
+
+// Store online users for notifications
+let onlineUsers = {}; // { userId: socketId }
+
+function setupSocketIO(io) {
+  // Middleware to verify JWT on connection
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('No token provided'));
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+      socket.userId = decoded.userId;
+      return next();
+    } catch (err) {
+      return next(new Error('Invalid token'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    console.log('A user connected:', socket.userId);
+
+    // Store the socket for the connected user
+    onlineUsers[socket.userId] = socket.id;
+
+    // Join the user's room for real-time notifications
+    socket.join(socket.userId);
+
+    // --- Existing Chat Functionality ---
+    socket.on('joinConversation', (conversationId) => {
+      // The user joins a specific conversation room
+      socket.join(conversationId);
+    });
+
+    // Listen for typing indicator
+    socket.on('typing', ({ conversationId }) => {
+      socket.to(conversationId).emit('typing', {
+        userId: socket.userId,
+        conversationId,
+      });
+    });
+
+    // Listen for new message
+    socket.on('newMessage', (messageData) => {
+      // Broadcast to all other users in the room
+      socket.to(messageData.conversationId).emit('newMessage', messageData);
+    });
+
+    // --- New Notification Functionality ---
+    socket.on('newNotification', (notification) => {
+      // Emit the notification to the recipient
+      const recipientSocketId = onlineUsers[notification.user_id];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit('newNotification', notification);
+      }
+    });
+
+    // Cleanup on disconnect
+    socket.on('disconnect', () => {
+      console.log('User disconnected:', socket.userId);
+      delete onlineUsers[socket.userId];
+    });
+  });
+}
+
+module.exports = { setupSocketIO };
+
+--- utils\socketIOInstance.js ---
+// utils/socketIOInstance.js
+const { Server } = require('socket.io');
+require('dotenv').config();
+
+let io;
+
+function init(server) {
+  io = new Server(server, {
+    cors: {
+      origin: process.env.FRONTEND_ORIGIN,
+      methods: ['GET', 'POST'],
+      credentials: true
+    },
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+      skipMiddlewares: true
+    }
+  });
+
+  // Add ping/pong handling
+  io.on('connection', (socket) => {
+    socket.on('ping', (cb) => cb());
+    console.log('A user connected:', socket.id);
+
+    socket.on('disconnect', () => {
+      console.log('User disconnected:', socket.id);
+    });
+  });
+
+  return io;
+}
+
+function getIO() {
+  if (!io) {
+    throw new Error('Socket.io not initialized!');
+  }
+  return io;
+}
+
+module.exports = {
+  init,
+  getIO,
+};
+
 --- server.js ---
 require('dotenv').config();
 const express = require('express');

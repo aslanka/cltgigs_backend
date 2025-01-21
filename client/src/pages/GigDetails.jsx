@@ -134,20 +134,32 @@ formatMemberSince(gig?.user_id?.createdAt)
       navigate('/login', { state: { from: `/gigs/${gigId}`, formData: { bidAmount, bidMessage } } });
       return;
     }
-
+  
     if (!bidAmount || isNaN(bidAmount)) {
       setError('Please enter a valid bid amount');
       return;
     }
-
+  
     setIsPlacingBid(true);
     try {
       const res = await axios.post('/bids', {
-        gigId,
+        gig_id: gigId, // Correct parameter name
         amount: parseFloat(bidAmount),
-        message: bidMessage,
+        message: bidMessage
       });
-      setBids([...bids, res.data]);
+  
+      // Create a bid object with the current user's information
+      const newBid = {
+        ...res.data.newBid,
+        user_id: {  // Mock the populated user object
+          _id: userData.userId,
+          name: userData.name,
+          profile_pic_url: userData.profilePicUrl,
+          rating: userData.rating
+        }
+      };
+  
+      setBids(prevBids => [...prevBids, newBid]);
       setBidAmount('');
       setBidMessage('');
       setError(null);
@@ -211,8 +223,11 @@ formatMemberSince(gig?.user_id?.createdAt)
     return <div className="text-center p-8">Gig not found</div>;
   }
 
-  const isOwner = userData?.userId === gig.user_id._id;
-  const userBid = bids.find((bid) => bid.user_id._id === userData?.userId);
+  const isOwner = userData?.userId === gig?.user_id?._id;
+  const userBid = bids.find(bid => {
+    const bidUserId = bid.user_id?._id || bid.user_id;
+    return bidUserId === userData?.userId;
+  });
 
   return (
     <motion.main
@@ -384,21 +399,21 @@ formatMemberSince(gig?.user_id?.createdAt)
           <div className="sticky top-8 space-y-6">
             {/* Bid Section */}
             {!isOwner && (
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                {userBid ? (
-                  <div className="space-y-4">
-                    <h2 className="text-xl font-semibold text-gray-900">Your Bid</h2>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Bid Amount</p>
-                      <p className="text-lg font-semibold text-gray-900">${userBid.amount}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Your Message</p>
-                      <p className="text-gray-700 whitespace-pre-wrap">{userBid.message || 'No message provided'}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handlePlaceBid} className="space-y-4">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          {userBid ? (
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold text-gray-900">Your Bid</h2>
+              <div>
+                <p className="text-sm text-gray-500 mb-1">Bid Amount</p>
+                <p className="text-lg font-semibold text-gray-900">${userBid.amount}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 mb-1">Your Message</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{userBid.message || 'No message provided'}</p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handlePlaceBid} className="space-y-4">
                     <h2 className="text-xl font-semibold text-gray-900">Place Your Bid</h2>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount ($)</label>

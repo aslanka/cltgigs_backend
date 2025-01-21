@@ -6,6 +6,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 
 exports.createBid = async (req, res) => {
+  console.log('hid');
   try {
     const { gig_id, amount, message } = req.body;
     const userId = req.user.userId;

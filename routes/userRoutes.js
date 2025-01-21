@@ -11,6 +11,7 @@ const { messageUpload } = require('../middlewares/upload');
 router.get('/:userId', userController.getPublicProfile);
 
 router.post('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+router.put('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
 
 // Update user profile
 router.put('/:userId', authenticate, userController.updateProfile);
@@ -21,6 +22,8 @@ router.put('/:userId', authenticate, updateProfile);
 
 // In your Express routes:
 router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
+
+router.get('/:userId/block-status', authenticate, userController.checkBlockStatus);
 
 
 module.exports = router;
