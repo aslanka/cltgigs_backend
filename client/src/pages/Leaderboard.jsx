@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { Trophy, Award, Zap, Clock, Flame, Star, Gem, Crown } from 'lucide-react';
 import Mascot from '../assets/mascot.svg';
+import ProfilePicture from '../components/ProfilePicture'; // Import the ProfilePicture component
 
 // Skeleton Loading Component
 const SkeletonRow = () => (
@@ -128,8 +129,8 @@ const Leaderboard = () => {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+{/* Main Content */}
+<main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <TimeframeToggle timeframe={timeframe} setTimeframe={setTimeframe} />
         </div>
@@ -150,7 +151,8 @@ const Leaderboard = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     layout
-                    className={`p-4 rounded-xl shadow-sm hover:shadow-md transition-all ${bg} bg-gradient-to-r`}
+                    className={`p-4 rounded-xl shadow-sm hover:shadow-md transition-all ${bg} bg-gradient-to-r cursor-pointer hover:bg-gray-50`}
+                    onClick={() => navigate(`/profile/${user._id}`)}
                   >
                     <div className="flex items-center">
                       <div className="w-12 text-center mr-4">
@@ -167,23 +169,24 @@ const Leaderboard = () => {
                       </div>
                       
                       <div className="flex items-center flex-1">
-                        <img 
-                          src={user.profile_pic_url || '/default-avatar.png'} 
-                          alt={user.name}
-                          className="h-10 w-10 rounded-full object-cover mr-4"
+                        <ProfilePicture
+                          profile_pic_url={user.profile_pic_url}
+                          name={user.name}
+                          size="10"
+                          className="mr-4"
                         />
                         <div>
                           <h3 className="font-bold text-lg">{user.name}</h3>
                           <p className="text-sm text-gray-600">
-  {(user.badges || []).join(' • ')}
-</p>
+                            {(user.badges || []).join(' • ')}
+                          </p>
                         </div>
                       </div>
                       
                       <div className="flex items-center gap-2 bg-white/90 px-4 py-2 rounded-full">
-  <Zap className="w-5 h-5 text-yellow-500" />
-  <span className="font-bold">{user.xp || 0} XP</span>
-</div>
+                        <Zap className="w-5 h-5 text-yellow-500" />
+                        <span className="font-bold">{user.xp || 0} XP</span>
+                      </div>
                     </div>
                   </motion.div>
                 );

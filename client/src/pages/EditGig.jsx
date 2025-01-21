@@ -47,11 +47,10 @@ function EditGig() {
         setCompletionDate(gig.completion_date?.split('T')[0] || '');
         setTeamSize(gig.team_size);
         setGigTasks(gig.gig_tasks);
-        const initialBudget = gig.is_volunteer ? [0, 0] : [
+        const initialBudget = gig.is_volunteer ? [100, 1000] : [ // Default to paid range if switching
           gig.budget_range_min || 100,
           gig.budget_range_max || 1000
         ];
-  
         setBudgetRange(initialBudget);
         setIsVolunteer(gig.is_volunteer);
         setTags(gig.tags?.join(', ') || '');
