@@ -41,7 +41,7 @@ setupSocketIO(io);
 app.set('io', io);
 
 // CORS configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/']; // Add other origins if needed
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'http://127.0.0.1:5500']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {

@@ -1,28 +1,19 @@
-// routes/reportRoutes.js
 const express = require('express');
 const router = express.Router();
-const Report = require('../models/Report'); // Assuming you have a Report model
 const { authenticate } = require('../middlewares/auth');
+const {
+  createReport,
+  getReports,
+  getReportById,
+} = require('../controllers/reportController');
 
-router.post('/', authenticate, async (req, res) => {
-  try {
-    const { reporterId, creatorId, contentId, contentType, reportDetails, timestamp } = req.body;
+// Route to create a new report
+router.post('/', authenticate, createReport);
 
-    const newReport = new Report({
-      reporterId,
-      creatorId,
-      contentId,
-      contentType,
-      reportDetails,
-      timestamp,
-    });
+// Route to get all reports (admin use)
+router.get('/', authenticate, getReports);
 
-    await newReport.save();
-    res.status(201).json({ message: 'Report submitted successfully' });
-  } catch (error) {
-    console.error('Error submitting report:', error);
-    res.status(500).json({ error: 'Failed to submit report' });
-  }
-});
+// Route to get a specific report by ID
+router.get('/:id', authenticate, getReportById);
 
 module.exports = router;
