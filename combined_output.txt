@@ -690,6 +690,41 @@ exports.deleteGig = async (req, res) => {
 
 
 
+--- controllers\leaderboardController.js ---
+const User = require('../models/User'); // Add this import at the top
+
+// controllers/leaderboardController.js
+exports.getLeaderboard = async (req, res) => {
+    try {
+      const { timeframe } = req.query;
+      
+      let dateFilter = {};
+      if (timeframe === 'weekly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
+      } else if (timeframe === 'monthly') {
+        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
+      }
+  
+      const users = await User.aggregate([
+        { $match: dateFilter },
+        { $sort: { xp: -1 } },
+        { $project: { name: 1, profile_pic_url: 1, xp: 1, badges: 1 } },
+        { $limit: 100 }
+      ]);
+  
+      // Add ranks
+      const rankedUsers = users.map((user, index) => ({
+        ...user,
+        rank: index + 1
+      }));
+  
+      res.json(rankedUsers);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  };
+
 --- controllers\messageController.js ---
 // controllers/messageController.js
 const { getIO } = require('../utils/socketIOInstance');
@@ -1547,7 +1582,18 @@ const userSchema = new mongoose.Schema({
   // Default Fields
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+
+  xp: { type: Number, default: 0 },
+  badges: { type: [String], default: [] }, // Ensure default empty array
+  rank: { type: Number },
+  completed_gigs: { type: Number, default: 0 },
+
+  redeemedRewards: [{ 
+    rewardId: mongoose.Schema.Types.ObjectId,
+    redeemedAt: Date 
+  }],
+  unlockedTiers: [String],
 });
 
 module.exports = mongoose.model('User', userSchema);
@@ -1709,6 +1755,16 @@ router.delete('/:gigId', authenticate, deleteGig);
 
 module.exports = router;
 
+
+--- routes\leaderboardRoutes.js ---
+// routes/leaderboardRoutes.js
+const express = require('express');
+const router = express.Router();
+const { getLeaderboard } = require('../controllers/leaderboardController');
+
+router.get('/', getLeaderboard);
+
+module.exports = router;
 
 --- routes\messageRoutes.js ---
 // routes/messageRoutes.js
@@ -2079,6 +2135,7 @@ const attachmentRoutes = require('./routes/attachmentRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
 
 // Initialize Express app
 const app = express();
@@ -2161,6 +2218,7 @@ app.use('/api/attachments', attachmentRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

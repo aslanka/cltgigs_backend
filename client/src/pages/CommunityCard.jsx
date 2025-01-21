@@ -1,49 +1,43 @@
-// src/pages/CommunityCard.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Star, Share2, Edit, Mail, Globe, Briefcase, Award, 
+  CheckCircle, MessageCircle, X, DownloadCloud, Sparkles 
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 import ProfilePicture from '../components/ProfilePicture';
-import Attachment from '../components/Attachment';
+import SkillBadge from '../components/SkillBadge';
+import RatingChart from '../components/RatingChart';
 
-function CommunityCard() {
+const CommunityCard = () => {
   const { userId } = useParams();
   const { token, userData } = useContext(AuthContext);
-
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
   const [hoveredRating, setHoveredRating] = useState(0);
   const [error, setError] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedProfile, setEditedProfile] = useState({});
-  const [portfolioFiles, setPortfolioFiles] = useState([]);
-  const [certificationFiles, setCertificationFiles] = useState([]);
+  const [progress, setProgress] = useState(82);
 
   useEffect(() => {
-    fetchProfile();
-    fetchReviews();
+    const fetchData = async () => {
+      try {
+        const [profileRes, reviewsRes] = await Promise.all([
+          axios.get(`/users/${userId}`),
+          axios.get(`/reviews/user/${userId}`)
+        ]);
+        setProfile(profileRes.data);
+        setReviews(reviewsRes.data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchData();
   }, [userId]);
-
-  const fetchProfile = async () => {
-    try {
-      const res = await axios.get(`/users/${userId}`);
-      setProfile(res.data);
-      setEditedProfile(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchReviews = async () => {
-    try {
-      const res = await axios.get(`/reviews/user/${userId}`);
-      setReviews(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
@@ -64,7 +58,6 @@ function CommunityCard() {
       setReviews([res.data, ...reviews]);
       setNewReview({ rating: 0, comment: '' });
       toast.success('Review submitted successfully!');
-      fetchReviews();
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Error submitting review');
@@ -81,368 +74,230 @@ function CommunityCard() {
     }
   };
 
-  const handleEditProfile = async () => {
-    try {
-      // Exclude name from updating
-      const { name, ...dataToUpdate } = editedProfile;
-      const res = await axios.put(`/users/${userId}`, dataToUpdate);
-      setProfile(res.data);
-      setIsEditing(false);
-      toast.success('Profile updated successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error updating profile');
-    }
-  };
+  const averageRating = reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length || 0;
 
-  const handlePortfolioUpload = async () => {
-    try {
-      const formData = new FormData();
-      portfolioFiles.forEach((file) => {
-        formData.append('portfolio', file);
-      });
-      const res = await axios.post(`/users/${userId}/portfolio`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setProfile(res.data);
-      toast.success('Portfolio updated successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error uploading portfolio');
-    }
-  };
-
-  const handleCertificationUpload = async () => {
-    try {
-      const formData = new FormData();
-      certificationFiles.forEach((file) => {
-        formData.append('certifications', file);
-      });
-      const res = await axios.post(`/users/${userId}/certifications`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setProfile(res.data);
-      toast.success('Certifications updated successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error uploading certifications');
-    }
-  };
-
-  const handleRemovePortfolioItem = async (fileUrl) => {
-    try {
-      // Call your API to remove the portfolio item from user's portfolio
-      const res = await axios.delete(`/users/${userId}/portfolio`, { data: { fileUrl } });
-      setProfile(res.data);
-      toast.success('Portfolio item removed successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error removing portfolio item');
-    }
-  };
-
-  const handleReportProfile = async () => {
-    try {
-      // Example API call to report profile
-      await axios.post(`/reports`, { reportedUserId: userId });
-      toast.success('Profile reported successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Error reporting profile');
-    }
-  };
-
-  const averageRating = reviews.length > 0 
-    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-    : 'No ratings';
-
-  if (!profile) return <div className="text-center mt-10">Loading...</div>;
-
-  const shareProfile = async () => {
-    const url = window.location.href;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${profile.name}'s Profile`,
-          text: profile.tagline || 'Check out this profile!',
-          url: url
-        });
-      } catch (error) {
-        console.error('Error sharing', error);
-      }
-    } else {
-      toast.info(`Share this link: ${url}`);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6">
-      {/* Profile Header */}
-      <section className="bg-white p-4 sm:p-6 text-center shadow rounded-lg">
-        <ProfilePicture
-          profilePicUrl={profile.profile_pic_url}
-          name={profile.name}
-          size="36"
-          className="mx-auto mb-4 border-4 border-blue-600"
-        />
-        <h2 className="text-2xl sm:text-3xl font-bold mb-2">{profile.name}</h2>
-        {profile.tagline && (
-          <p className="text-gray-500 mb-2">{profile.tagline}</p>
-        )}
-        <div className="flex justify-center items-center mb-2">
-          {averageRating !== 'No ratings' ? (
-            <>
-              <div className="flex items-center mb-2">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <span
-                    key={i}
-                    className={`text-2xl ${
-                      i < Math.round(averageRating) ? 'text-yellow-500' : 'text-gray-300'
-                    }`}
-                  >
-                    {i < Math.round(averageRating) ? '★' : '☆'}
-                  </span>
-                ))}
-              </div>
-              <span className="text-gray-700 font-semibold ml-2">{averageRating} / 5</span>
-            </>
-          ) : (
-            <span className="text-gray-700">No ratings yet</span>
-          )}
-        </div>
-        <p className="text-gray-600 mb-2">{profile.bio || 'No bio available.'}</p>
-        {token && userData?.userId === userId && (
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mb-2"
-          >
-            {isEditing ? 'Cancel Editing' : 'Edit Profile'}
-          </button>
-        )}
-        <button
-          onClick={shareProfile}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 mr-2"
-        >
-          Share Profile
-        </button>
-        {token && userData?.userId !== userId && (
-          <button
-            onClick={handleReportProfile}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-          >
-            Report Profile
-          </button>
-        )}
-      </section>
-
-      {/* Editable Sections */}
-      {isEditing && token && userData?.userId === userId && (
-        <section className="bg-white p-4 sm:p-6 mt-6 shadow rounded-lg">
-          <h2 className="text-2xl font-semibold mb-4">Edit Profile</h2>
-          <div className="space-y-4">
-            {/* Personal Information */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Name</label>
-              <input
-                type="text"
-                value={editedProfile.name || ''}
-                disabled
-                className="mt-1 p-2 border border-gray-300 rounded w-full bg-gray-100 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Tagline</label>
-              <input
-                type="text"
-                value={editedProfile.tagline || ''}
-                onChange={(e) => setEditedProfile({ ...editedProfile, tagline: e.target.value })}
-                className="mt-1 p-2 border border-gray-300 rounded w-full"
-              />
-            </div>
-            {/* ... rest of the edit form remains unchanged ... */}
-            {/* Portfolio and Certifications Sections */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Portfolio</label>
-              <input
-                type="file"
-                multiple
-                onChange={(e) => setPortfolioFiles([...e.target.files])}
-                className="mt-1 p-2 border border-gray-300 rounded w-full"
-              />
-              <button
-                onClick={handlePortfolioUpload}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mt-2"
-              >
-                Upload Portfolio
-              </button>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Certifications</label>
-              <input
-                type="file"
-                multiple
-                onChange={(e) => setCertificationFiles([...e.target.files])}
-                className="mt-1 p-2 border border-gray-300 rounded w-full"
-              />
-              <button
-                onClick={handleCertificationUpload}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mt-2"
-              >
-                Upload Certifications
-              </button>
-            </div>
-
-            <button
-              onClick={handleEditProfile}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-            >
-              Save Changes
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Public Profile Details */}
-      <section className="bg-white p-4 sm:p-6 mt-6 shadow rounded-lg">
-        <h2 className="text-2xl font-semibold mb-4">Profile Details</h2>
-        {/* Display public profile details */}
-        <p><strong>Location:</strong> {profile.location || 'Not specified'}</p>
-        <p><strong>Service Area:</strong> {profile.service_area || 'Not specified'}</p>
-        <p><strong>Services Offered:</strong> {profile.services_offered?.join(', ') || 'Not specified'}</p>
-        <p><strong>Specializations:</strong> {profile.specializations?.join(', ') || 'Not specified'}</p>
-        <p><strong>Experience:</strong> {profile.experience || 0} years</p>
-        {/* Add more public details as needed */}
-      </section>
-
-      {/* Portfolio Section */}
-      <section className="bg-white p-4 sm:p-6 mt-6 shadow rounded-lg">
-        <h2 className="text-2xl font-semibold mb-4">Portfolio</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {profile.portfolio?.length ? (
-            profile.portfolio.map((fileUrl, index) => (
-              <div key={index} className="relative group">
-                <Attachment fileUrl={fileUrl} />
-                {token && userData?.userId === userId && (
-                  <button
-                    onClick={() => handleRemovePortfolioItem(fileUrl)}
-                    className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))
-          ) : (
-            <p>No portfolio items yet.</p>
-          )}
-        </div>
-      </section>
-
-      {/* Reviews Section */}
-      <section className="bg-white p-4 sm:p-6 mt-6 shadow rounded-lg">
-        <h2 className="text-2xl font-semibold mb-4">Reviews</h2>
-        <div>
-          {reviews.length === 0 ? (
-            <p>No reviews yet. Be the first to review!</p>
-          ) : (
-            reviews.map((review) => (
-              <div key={review._id} className="border-b border-gray-200 py-4">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center space-x-2">
-                    <ProfilePicture
-                      profilePicUrl={review.reviewer_id?.profile_pic_url}
-                      name={review.reviewer_id?.name}
-                      size="6"
-                    />
-                    <span className="font-medium text-blue-600">
-                      {review.reviewer_id?.name}
-                    </span>
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    {new Date(review.date).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex items-center mb-2">
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <span
-                      key={i}
-                      className={`text-2xl ${
-                        i < review.rating ? 'text-yellow-500' : 'text-gray-300'
-                      }`}
-                    >
-                      {i < review.rating ? '★' : '☆'}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-gray-700 mb-2">{review.comment}</p>
-                {token && userData?.userId === review.reviewer_id?._id && (
-                  <button
-                    onClick={() => handleDeleteReview(review._id)}
-                    className="text-red-500 text-sm hover:underline"
-                  >
-                    Delete Review
-                  </button>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Review Form */}
-        {token && userData?.userId !== userId ? (
-          <div className="mt-6">
-            <h3 className="text-xl font-semibold mb-3">Leave a Review</h3>
-            {error && <p className="text-red-500 mb-2">{error}</p>}
-            <form onSubmit={handleReviewSubmit} className="flex flex-col space-y-4">
-              <div className="flex items-center space-x-2">
-                <label className="font-medium">Rating:</label>
-                <div className="flex">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setNewReview({ ...newReview, rating: star })}
-                      onMouseEnter={() => setHoveredRating(star)}
-                      onMouseLeave={() => setHoveredRating(0)}
-                      className="focus:outline-none"
-                    >
-                      <span
-                        className={`text-3xl ${
-                          hoveredRating >= star || newReview.rating >= star
-                            ? 'text-yellow-500'
-                            : 'text-gray-300'
-                        }`}
-                      >
-                        {hoveredRating >= star || newReview.rating >= star ? '★' : '☆'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <textarea 
-                value={newReview.comment}
-                onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
-                placeholder="Write your review..." 
-                required 
-                className="p-2 border border-gray-300 rounded resize-none h-24 w-full"
-              />
-              <button 
-                type="submit" 
-                className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-              >
-                Submit Review
-              </button>
-            </form>
-          </div>
-        ) : !token ? (
-          <p className="mt-6 text-center text-gray-600">
-            Please log in to leave a review.
-          </p>
-        ) : null}
-      </section>
+  if (!profile) return (
+    <div className="flex justify-center items-center h-screen">
+      <div className="animate-pulse text-2xl text-gray-500">Loading profile...</div>
     </div>
   );
-}
+
+  return (
+    <motion.div 
+      initial="hidden"
+      animate="visible"
+      className="min-h-screen bg-white py-8 px-4 sm:px-6 lg:px-8"
+    >
+      <div className="max-w-6xl mx-auto">
+        {/* Profile Header - Yelp-style */}
+        <div className="flex flex-col md:flex-row gap-8 items-start">
+          {/* Smaller Profile Image */}
+          <div className="w-full md:w-1/3 lg:w-1/4">
+            <ProfilePicture 
+              profilePicUrl={profile.profile_pic_url} 
+              name={profile.name}
+              size="32"
+              className="border-4 border-white shadow-lg rounded-lg"
+              crossOrigin="anonymous"
+            />
+          </div>
+
+          <div className="flex-1">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">{profile.name}</h1>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`w-6 h-6 ${i < Math.round(averageRating) ? 'text-yellow-400' : 'text-gray-300'}`}
+                        fill={i < Math.round(averageRating) ? 'currentColor' : 'none'}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-lg font-medium text-gray-700">
+                    {averageRating.toFixed(1)} ({reviews.length} reviews)
+                  </span>
+                </div>
+                {profile.tagline && (
+                  <p className="text-lg text-gray-600 mt-2">{profile.tagline}</p>
+                )}
+              </div>
+              
+              {userData?.userId === userId && (
+                <button 
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="p-2 hover:bg-gray-100 rounded-full"
+                >
+                  <Edit className="w-6 h-6 text-gray-600" />
+                </button>
+              )}
+            </div>
+
+            {/* Gamification Badges */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              <SkillBadge 
+                icon={<Briefcase className="w-4 h-4" />} 
+                label={`${profile.experience}+ years`} 
+              />
+              <SkillBadge
+                icon={<CheckCircle className="w-4 h-4 text-green-500" />}
+                label={`${profile.completedGigs || 0} completed`}
+                className="bg-green-50"
+              />
+              <SkillBadge
+                icon={<Sparkles className="w-4 h-4 text-purple-500" />}
+                label={`Level ${Math.floor(progress/20)}`}
+                className="bg-purple-50"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-3">
+              <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700">
+                <MessageCircle className="w-5 h-5" />
+                Contact
+              </button>
+              <button className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-full hover:bg-gray-200">
+                <Share2 className="w-5 h-5" />
+                Share
+              </button>
+            </div>
+
+            {/* Profile Details */}
+            <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-gray-500" />
+                <span>{profile.location || 'Remote'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-gray-500" />
+                <span>{profile.experience} years experience</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Portfolio Section */}
+        <section className="mt-8 border-t pt-8">
+          <h2 className="text-2xl font-bold mb-6">Portfolio</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {profile.portfolio?.map((fileUrl, index) => (
+              <div key={index} className="relative group rounded-lg overflow-hidden">
+                <img
+                  src={fileUrl}
+                  alt={`Portfolio item ${index + 1}`}
+                  className="w-full h-48 object-cover hover:opacity-90 transition-opacity"
+                  crossOrigin="anonymous"
+                />
+                {userData?.userId === userId && (
+                  <button
+                    onClick={() => handleDeleteReview(fileUrl)}
+                    className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full hover:bg-white shadow-sm"
+                  >
+                    <X className="w-5 h-5 text-red-600" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Reviews Section */}
+        <section className="mt-8 border-t pt-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">Reviews</h2>
+            <div className="flex items-center gap-2">
+              <RatingChart reviews={reviews} />
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {reviews.map((review) => (
+              <div key={review._id} className="p-4 bg-gray-50 rounded-lg relative">
+                <div className="flex items-center gap-4 mb-3">
+                  <ProfilePicture 
+                    profilePicUrl={review.reviewer_id?.profile_pic_url} 
+                    name={review.reviewer_id?.name}
+                    size="10"
+                    crossOrigin="anonymous"
+                  />
+                  <div>
+                    <h4 className="font-medium">{review.reviewer_id?.name}</h4>
+                    <div className="flex items-center gap-1 text-yellow-400">
+                      {[...Array(review.rating)].map((_, i) => (
+                        <Star key={i} className="w-4 h-4 fill-current" />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-gray-600">{review.comment}</p>
+                
+                {(userData?.userId === review.reviewer_id?._id || userData?.userId === userId) && (
+                  <button
+                    onClick={() => handleDeleteReview(review._id)}
+                    className="absolute top-4 right-4 p-1 hover:bg-gray-200 rounded-full"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Review Form */}
+          {token && userData?.userId !== userId && (
+            <div className="mt-8 pt-6 border-t">
+              <h3 className="text-xl font-bold mb-6">Write a Review</h3>
+              <form onSubmit={handleReviewSubmit} className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onMouseEnter={() => setHoveredRating(star)}
+                        onMouseLeave={() => setHoveredRating(0)}
+                        onClick={() => setNewReview({ ...newReview, rating: star })}
+                        className={`p-2 rounded-lg transition-colors ${
+                          (hoveredRating >= star || newReview.rating >= star) 
+                            ? 'bg-blue-50 text-blue-600' 
+                            : 'text-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Star className="w-6 h-6" />
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-gray-500">
+                    {hoveredRating || newReview.rating} Star Rating
+                  </span>
+                </div>
+
+                <textarea
+                  value={newReview.comment}
+                  onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                  placeholder="Share your experience..."
+                  className="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows="4"
+                />
+
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 font-medium"
+                >
+                  Submit Review
+                </button>
+              </form>
+            </div>
+          )}
+        </section>
+      </div>
+    </motion.div>
+  );
+};
 
 export default CommunityCard;

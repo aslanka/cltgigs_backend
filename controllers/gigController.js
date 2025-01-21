@@ -172,14 +172,30 @@ exports.createGig = async (req, res) => {
       start_date,
       completion_date,
       team_size,
-      gig_tasks,
+      gig_tasks: gigTasksRaw,
       budget_range_min,
       budget_range_max,
-      is_volunteer,
+      is_volunteer: isVolunteerString,
       tags,
     } = req.body;
 
     const userId = req.user.userId;
+
+    // Convert string boolean to actual boolean
+    const is_volunteer = isVolunteerString === 'true';
+
+    // Parse gig tasks from JSON string
+    let gig_tasks = [];
+    if (gigTasksRaw) {
+      try {
+        gig_tasks = JSON.parse(gigTasksRaw);
+        if (!Array.isArray(gig_tasks)) {
+          return res.status(400).json({ error: 'Gig tasks must be an array' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid gig tasks format' });
+      }
+    }
 
     // Validate budget fields if not a volunteer gig
     if (!is_volunteer) {
@@ -189,7 +205,7 @@ exports.createGig = async (req, res) => {
       if (isNaN(budget_range_min) || isNaN(budget_range_max)) {
         return res.status(400).json({ error: 'Budget range must be valid numbers' });
       }
-      if (budget_range_min > budget_range_max) {
+      if (parseFloat(budget_range_min) > parseFloat(budget_range_max)) {
         return res.status(400).json({ error: 'Budget range min must be less than or equal to max' });
       }
     }
@@ -209,12 +225,12 @@ exports.createGig = async (req, res) => {
       start_date: start_date || null,
       completion_date: completion_date || null,
       team_size: team_size || 1,
-      gig_tasks: gig_tasks || [],
+      gig_tasks,
       budget_range_min: is_volunteer ? null : parseFloat(budget_range_min),
       budget_range_max: is_volunteer ? null : parseFloat(budget_range_max),
       calculated_average_budget,
       is_volunteer,
-      tags: tags || [],
+      tags: tags ? tags.split(',') : [],
     });
 
     // Save gig to database

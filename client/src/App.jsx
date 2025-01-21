@@ -16,6 +16,9 @@ import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import MyBids from './pages/MyBids';
 import SearchResults from './pages/SearchResults';
+import Leaderboard from './pages/Leaderboard'; // Add this import
+import ViewRewards from './pages/ViewRewards';
+import GamificationGuide from './pages/GamificationGuide';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
@@ -32,8 +35,15 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-
+          
+          {/* Public Routes */}
           <Route path="/gigs/:gigId" element={<GigDetails />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/search" element={<SearchResults />} />
+          <Route path="/communitycard/:userId" element={<CommunityCard />} />
+          <Route path="/profile/:userId" element={<CommunityCard />} />
+
+          {/* Protected Routes */}
           <Route
             path="/gigs/:gigId/edit"
             element={
@@ -83,10 +93,6 @@ function App() {
             }
           />
           <Route
-            path="/communitycard/:userId"
-            element={<CommunityCard />}
-          />
-          <Route
             path="/messages"
             element={
               <ProtectedRoute>
@@ -94,6 +100,13 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/game-guide" element={<GamificationGuide />} />
+          <Route
+  path="/rewards"
+  element={
+      <ViewRewards />
+  }
+/>
           <Route
             path="/messages/:conversationId"
             element={
@@ -102,9 +115,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/search" element={<SearchResults />} />
-
-          <Route path="/profile/:userId" element={<CommunityCard />} />
         </Routes>
       </div>
     </div>

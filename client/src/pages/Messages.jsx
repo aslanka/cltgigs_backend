@@ -1,6 +1,6 @@
 // frontend/src/pages/Messages.jsx
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import moment from 'moment';
 import { X, Send, Paperclip, ChevronLeft, MoreVertical } from 'lucide-react';
@@ -69,7 +69,6 @@ const useConversations = (token, urlConversationId, navigate) => {
         const filtered = res.data.filter(conv => conv.gigTitle?.trim());
         setConversations(filtered);
         
-        // Set active conversation from URL if valid
         const initialConv = filtered.find(c => c._id === urlConversationId);
         if (urlConversationId && initialConv) {
           setActiveConversation(initialConv);
@@ -97,33 +96,55 @@ const useConversations = (token, urlConversationId, navigate) => {
   };
 };
 
-// MessageBubble component
+// MessageBubble component with updated theme
 const MessageBubble = React.memo(({ message, isSelf }) => (
   <div className={`flex ${isSelf ? 'justify-end' : 'justify-start'} mb-4`}>
-    <div className={`p-3 rounded-lg max-w-[75%] ${isSelf ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+    <div className={`p-3 rounded-2xl max-w-[75%] ${
+      isSelf 
+        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' 
+        : 'bg-gray-50 shadow-sm'
+    }`}>
       {message.content && <p className="mb-2">{message.content}</p>}
       {message.file_url && <Attachment fileUrl={message.file_url} />}
-      <span className={`text-xs ${isSelf ? 'text-blue-200' : 'text-gray-500'}`}>
+      <span className={`text-xs ${isSelf ? 'text-blue-100' : 'text-gray-500'}`}>
         {moment(message.created_at).format('LT')}
       </span>
     </div>
   </div>
 ));
 
-// ConversationItem component
+// ConversationItem component with clickable elements
 const ConversationItem = React.memo(({ conv, onSelect, onClose }) => (
-  <div onClick={() => onSelect(conv)} className="p-4 hover:bg-gray-50 cursor-pointer border-b">
+  <div onClick={() => onSelect(conv)} className="p-4 hover:bg-gray-50 cursor-pointer border-b transition-colors">
     <div className="flex items-center justify-between">
       <div className="flex items-center space-x-3">
-        <ProfilePicture profilePicUrl={conv.otherUserPic} name={conv.otherUserName} size="10" />
+        <Link 
+          to={`/profile/${conv.otherUserId}`} 
+          onClick={(e) => e.stopPropagation()}
+          className="hover:opacity-80 transition-opacity"
+        >
+          <ProfilePicture profilePicUrl={conv.otherUserPic} name={conv.otherUserName} size="10" />
+        </Link>
         <div>
-          <h3 className="font-semibold">{conv.otherUserName}</h3>
-          <p className="text-sm text-gray-500 truncate">{conv.gigTitle}</p>
+          <Link
+            to={`/profile/${conv.otherUserId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="font-semibold hover:text-blue-600 transition-colors"
+          >
+            {conv.otherUserName}
+          </Link>
+          <Link
+            to={`/gigs/${conv.gigId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-sm text-gray-500 truncate hover:text-blue-600 block transition-colors"
+          >
+            {conv.gigTitle}
+          </Link>
         </div>
       </div>
       <button 
         onClick={(e) => onClose(conv._id, e)}
-        className="text-gray-400 hover:text-gray-600"
+        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
@@ -131,22 +152,26 @@ const ConversationItem = React.memo(({ conv, onSelect, onClose }) => (
   </div>
 ));
 
-// TypingIndicator component
+// TypingIndicator component with updated style
 const TypingIndicator = () => (
-  <div className="text-gray-500">Typing...</div>
+  <div className="flex space-x-1 items-center text-gray-500">
+    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+  </div>
 );
 
-// AttachmentPreview component
+// AttachmentPreview component with updated style
 const AttachmentPreview = ({ attachment, onRemove }) => (
-  <div className="mb-4 relative">
+  <div className="mb-4 relative group">
     <img
       src={URL.createObjectURL(attachment)}
       alt="Attachment"
-      className="h-24 w-24 object-cover rounded"
+      className="h-24 w-24 object-cover rounded-lg border"
     />
     <button 
       onClick={onRemove}
-      className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1"
+      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
     >
       <X className="w-4 h-4" />
     </button>
@@ -178,7 +203,7 @@ export default function Messages() {
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Socket handlers
+  // Socket handlers with real-time optimization
   const socketHandlers = {
     onTyping: ({ userId: typingId }) => {
       if (typingId !== userId && activeConversation) {
@@ -189,6 +214,7 @@ export default function Messages() {
     onNewMessage: (msgData) => {
       if (msgData.conversation_id === activeConversation?._id) {
         setMessages(prev => [...prev, msgData]);
+        scrollToBottom();
       }
     },
     onMessageDeleted: ({ messageId }) => {
@@ -206,6 +232,7 @@ export default function Messages() {
       try {
         const res = await axios.get(`/messages/${activeConversation._id}`);
         setMessages(res.data);
+        scrollToBottom();
       } catch (err) {
         console.error('Error fetching messages:', err);
       }
@@ -222,9 +249,24 @@ export default function Messages() {
     }
   }, [urlConversationId, conversations]);
 
-  // Message handling functions
+  // Optimistic updates for messages
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !attachment) || !activeConversation) return;
+
+    const tempId = Date.now().toString();
+    const tempMessage = {
+      _id: tempId,
+      content: newMessage,
+      sender_id: userId,
+      created_at: new Date().toISOString(),
+      file_url: attachment ? URL.createObjectURL(attachment) : null
+    };
+
+    // Optimistic update
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
+    setAttachment(null);
+    scrollToBottom();
 
     try {
       let file_url = null;
@@ -237,16 +279,23 @@ export default function Messages() {
         setIsUploading(false);
       }
 
-      await axios.post('/messages', {
+      const { data: sentMessage } = await axios.post('/messages', {
         conversationId: activeConversation._id,
         content: newMessage,
         file_url,
       });
 
-      setNewMessage('');
-      setAttachment(null);
+      // Replace temporary message with server response
+      setMessages(prev => prev.map(m => 
+        m._id === tempId ? { ...sentMessage, file_url } : m
+      ));
+      
+      // Manually emit newMessage event for other clients
+      socketRef.current?.emit('newMessage', sentMessage);
+      
     } catch (err) {
       console.error('Error sending message:', err);
+      setMessages(prev => prev.filter(m => m._id !== tempId));
       setIsUploading(false);
     }
   };
@@ -276,6 +325,16 @@ export default function Messages() {
     }
   };
 
+  // Scroll to bottom when messages change
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }, 50);
+  };
+
   // Responsive sidebar handling
   useEffect(() => {
     const handleResize = () => {
@@ -291,14 +350,14 @@ export default function Messages() {
       {/* Not Found Modal */}
       {notFoundModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
             <h2 className="text-xl font-semibold mb-4">Conversation Not Found</h2>
             <button
               onClick={() => {
                 navigate('/messages');
                 setNotFoundModal(false);
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="w-full bg-gradient-to-br from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
             >
               Return to Messages
             </button>
@@ -306,13 +365,13 @@ export default function Messages() {
         </div>
       )}
 
-      {/* Sidebar */}
-      <aside className={`w-full md:w-96 border-r ${showSidebar ? 'block' : 'hidden'} md:block`}>
-        <div className="p-4 border-b">
+      {/* Updated Sidebar */}
+      <aside className={`w-full md:w-96 border-r bg-gray-50 ${showSidebar ? 'block' : 'hidden'} md:block`}>
+        <div className="p-4 border-b bg-white">
           <input
             type="text"
             placeholder="Search conversations..."
-            className="w-full p-2 border rounded"
+            className="w-full p-2 px-4 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -329,8 +388,8 @@ export default function Messages() {
         </div>
       </aside>
 
-      {/* Main Chat */}
-      <main className="flex-1 flex flex-col">
+      {/* Updated Main Chat */}
+      <main className="flex-1 flex flex-col bg-gray-50">
         {activeConversation ? (
           <>
             <ChatHeader
@@ -339,7 +398,7 @@ export default function Messages() {
               onBlockUser={handleBlockUser}
             />
 
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map(message => (
                 <MessageBubble 
                   key={message._id}
@@ -347,7 +406,11 @@ export default function Messages() {
                   isSelf={message.sender_id === userId}
                 />
               ))}
-              {isTyping && <TypingIndicator />}
+              {isTyping && (
+                <div className="pl-4">
+                  <TypingIndicator />
+                </div>
+              )}
             </div>
 
             {!activeConversation.isBlocked ? (
@@ -378,28 +441,46 @@ export default function Messages() {
   );
 }
 
-// Extracted ChatHeader component
+// Updated ChatHeader component
 const ChatHeader = ({ activeConversation, onShowSidebar, onBlockUser }) => (
-  <div className="p-4 border-b flex items-center justify-between">
+  <div className="p-4 border-b bg-white flex items-center justify-between">
     <div className="flex items-center space-x-4">
-      <button className="md:hidden" onClick={onShowSidebar}>
+      <button 
+        className="md:hidden p-2 hover:bg-gray-100 rounded-full"
+        onClick={onShowSidebar}
+      >
         <ChevronLeft className="w-6 h-6" />
       </button>
-      <ProfilePicture 
-        profilePicUrl={activeConversation.otherUserPic} 
-        name={activeConversation.otherUserName}
-        size="10"
-      />
+      <Link 
+        to={`/profile/${activeConversation.otherUserId}`}
+        className="hover:opacity-80 transition-opacity"
+      >
+        <ProfilePicture 
+          profilePicUrl={activeConversation.otherUserPic} 
+          name={activeConversation.otherUserName}
+          size="10"
+        />
+      </Link>
       <div>
-        <h2 className="font-semibold">{activeConversation.otherUserName}</h2>
-        <p className="text-sm text-gray-500">{activeConversation.gigTitle}</p>
+        <Link
+          to={`/profile/${activeConversation.otherUserId}`}
+          className="font-semibold hover:text-blue-600 transition-colors"
+        >
+          {activeConversation.otherUserName}
+        </Link>
+        <Link
+          to={`/gigs/${activeConversation.gigId}`}
+          className="text-sm text-gray-500 hover:text-blue-600 block transition-colors"
+        >
+          {activeConversation.gigTitle}
+        </Link>
       </div>
     </div>
     <DropdownMenu>
-      <DropdownMenuTrigger>
+      <DropdownMenuTrigger className="p-2 hover:bg-gray-100 rounded-full">
         <MoreVertical className="w-6 h-6" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent>
+      <DropdownMenuContent className="min-w-[160px]">
         <DropdownMenuItem onSelect={onBlockUser}>
           {activeConversation.isBlocked ? 'Unblock User' : 'Block User'}
         </DropdownMenuItem>
@@ -408,7 +489,7 @@ const ChatHeader = ({ activeConversation, onShowSidebar, onBlockUser }) => (
   </div>
 );
 
-// Extracted MessageInput component
+// Updated MessageInput component
 const MessageInput = React.memo(({
   newMessage,
   attachment,
@@ -420,7 +501,7 @@ const MessageInput = React.memo(({
   fileInputRef,
   socket
 }) => (
-  <div className="p-4 border-t">
+  <div className="p-4 border-t bg-white">
     {attachment && (
       <AttachmentPreview
         attachment={attachment}
@@ -436,9 +517,9 @@ const MessageInput = React.memo(({
       />
       <button
         onClick={() => fileInputRef.current.click()}
-        className="p-2 hover:bg-gray-100 rounded"
+        className="p-2 hover:bg-gray-100 rounded-full"
       >
-        <Paperclip className="w-6 h-6" />
+        <Paperclip className="w-6 h-6 text-gray-500" />
       </button>
       <input
         value={newMessage}
@@ -447,13 +528,13 @@ const MessageInput = React.memo(({
           socket?.emit('typing', { conversationId: activeConversation._id });
         }}
         onKeyPress={(e) => e.key === 'Enter' && onSend()}
-        className="flex-1 p-2 border rounded"
+        className="flex-1 p-2 px-4 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Type a message..."
       />
       <button
         onClick={onSend}
         disabled={isUploading}
-        className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full hover:opacity-90 transition-opacity"
       >
         <Send className="w-6 h-6" />
       </button>

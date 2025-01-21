@@ -272,7 +272,7 @@ const Home = () => {
 
           <div className="flex items-center space-x-4">
             <div className="bg-white p-3 rounded-xl shadow-sm">
-              <span className="text-lg font-medium">👑 Top Gigger This Week:</span>
+              <span className="text-lg font-medium">👑 Top Gigster This Week:</span>
               <span className="ml-2 text-blue-600">SarahM (2450 XP)</span>
             </div>
           </div>
