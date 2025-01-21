@@ -45,7 +45,7 @@ function App() {
 
           {/* Protected Routes */}
           <Route
-            path="/gigs/:gigId/edit"
+            path="/edit-gig/:gigId"
             element={
               <ProtectedRoute>
                 <EditGig />

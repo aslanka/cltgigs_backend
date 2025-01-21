@@ -13,13 +13,25 @@ const gigSchema = new mongoose.Schema({
   gig_tasks: { type: [String], default: [] }, // Array of tasks
   budget_range_min: { type: Number }, // Required if not volunteer
   budget_range_max: { type: Number }, // Required if not volunteer
-  calculated_average_budget: { type: Number }, // Required if not volunteer
+  calculated_average_budget: { 
+    type: Number,
+    default: null,
+    validate: {
+      validator: function(v) {
+        // Allow null for volunteer gigs and numbers for paid gigs
+        return v === null || Number.isFinite(v);
+      },
+      message: '{VALUE} is not a valid number or null'
+    }
+  },
   is_volunteer: { type: Boolean, default: false }, // Default to false
   tags: { type: [String], default: [] }, // Array of tags
+  
 });
 
 // Index for zipcode and created_at for faster queries
 gigSchema.index({ zipcode: 1 });
 gigSchema.index({ created_at: -1 });
+gigSchema.index({ category: 1, is_volunteer: 1, calculated_average_budget: 1 });
 
 module.exports = mongoose.model('Gig', gigSchema);

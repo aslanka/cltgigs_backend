@@ -225,80 +225,82 @@ const Navbar = () => {
       </div>
 
       <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 100 }}
-            ref={mobileMenuRef}
-            className="md:hidden fixed inset-y-0 right-0 w-80 bg-white shadow-xl z-50"
+      {mobileMenuOpen && (
+    <div ref={mobileMenuRef} className="md:hidden fixed inset-0 bg-white z-50">
+      <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
+        <div className="flex justify-between items-center px-4 py-3">
+          <span className="text-xl font-bold text-gray-900">Menu</span>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="p-2 hover:bg-gray-50 rounded-lg"
           >
-            <div className="h-full flex flex-col">
-              <div className="p-6 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-gray-900">Menu</span>
-                  <button
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="p-2 hover:bg-gray-50 rounded-lg"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-                
-                {token && profile && (
-                  <div className="mt-4 flex items-center space-x-3">
-                    <ProfilePicture
-                      profilePicUrl={profile?.profile_pic_url}
-                      name={profile?.name}
-                      size="12"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">{profile.name}</p>
-                      <p className="text-sm text-blue-600">{profile.xp || 0} XP</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-2">
-                {token ? (
-                  <>
-                    <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>Home</NavLink>
-                    <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>My Gigs</NavLink>
-                    <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>Messages</NavLink>
-                    <NavLink to="/leaderboard" icon={Trophy} onClick={() => setMobileMenuOpen(false)}>Leaderboard</NavLink>
-                    <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>Settings</NavLink>
-                    <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setMobileMenuOpen(false)}>Profile</NavLink>
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        <LogOut className="w-5 h-5" />
-                        <span className="font-medium">Log Out</span>
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-4">
-                    <Link
-                      to="/login"
-                      className="block w-full px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
-                    >
-                      Sign In
-                    </Link>
-                    <Link
-                      to="/register"
-                      className="block w-full px-4 py-3 text-center bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
-                    >
-                      Get Started
-                    </Link>
-                  </div>
-                )}
+        {token ? (
+          <>
+            <div className="px-4 py-3 border-b border-gray-100">
+              <div className="flex items-center space-x-3">
+                <ProfilePicture
+                  profilePicUrl={profile?.profile_pic_url}
+                  name={profile?.name}
+                  size="12"
+                />
+                <div>
+                  <p className="font-medium text-gray-900">{profile?.name}</p>
+                  <p className="text-sm text-blue-600">{profile?.xp || 0} XP</p>
+                </div>
               </div>
             </div>
-          </motion.div>
+
+            <div className="p-4 space-y-2">
+              <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>
+                Home
+              </NavLink>
+              <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>
+                My Gigs
+              </NavLink>
+              <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>
+                Messages
+              </NavLink>
+              <NavLink to="/leaderboard" icon={Trophy} onClick={() => setMobileMenuOpen(false)}>
+                Leaderboard
+              </NavLink>
+              <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>
+                Settings
+              </NavLink>
+              <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setMobileMenuOpen(false)}>
+                Profile
+              </NavLink>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                <LogOut className="w-5 h-5" />
+                <span className="font-medium">Log Out</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="p-4 space-y-4">
+            <Link
+              to="/login"
+              className="block w-full px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
+            >
+              Sign In
+            </Link>
+            <Link
+              to="/register"
+              className="block w-full px-4 py-3 text-center bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+            >
+              Get Started
+            </Link>
+          </div>
         )}
+      </div>
+    </div>
+  )}
       </AnimatePresence>
 
       <Notifications

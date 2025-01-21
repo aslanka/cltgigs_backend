@@ -288,29 +288,74 @@ exports.getMyGigs = async (req, res) => {
 exports.updateGig = async (req, res) => {
   try {
     const { gigId } = req.params;
-    const { title, description, price } = req.body;
     const userId = req.user.userId;
 
     const gig = await Gig.findById(gigId);
-    if (!gig) {
-      return res.status(404).json({ error: 'Gig not found' });
-    }
-    if (gig.user_id.toString() !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    if (gig.user_id.toString() !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+    // Handle volunteer status first
+    const isVolunteer = req.body.is_volunteer === 'true';
+    gig.is_volunteer = isVolunteer;
+
+    // Reset budget fields for volunteer gigs
+    if (isVolunteer) {
+      gig.budget_range_min = null;
+      gig.budget_range_max = null;
+      gig.calculated_average_budget = null;
+    } else {
+      // Validate and set budget for paid gigs
+      const min = parseFloat(req.body.budget_range_min);
+      const max = parseFloat(req.body.budget_range_max);
+
+      if (isNaN(min) || isNaN(max) || min < 0 || max < 0 || min > max) {
+        return res.status(400).json({ error: 'Invalid budget range' });
+      }
+
+      gig.budget_range_min = min;
+      gig.budget_range_max = max;
+      gig.calculated_average_budget = (min + max) / 2;
     }
 
-    gig.title = title || gig.title;
-    gig.description = description || gig.description;
-    gig.price = price || gig.price;
-    await gig.save();
+    // Update other fields
+    gig.title = req.body.title || gig.title;
+    gig.description = req.body.description || gig.description;
+    gig.category = req.body.category || gig.category;
+    gig.zipcode = req.body.zipcode || gig.zipcode;
+    gig.start_date = req.body.start_date || null;
+    gig.completion_date = req.body.completion_date || null;
+    gig.team_size = parseInt(req.body.team_size) || 1;
 
-    return res.json({ message: 'Gig updated', gig });
+    // Handle tasks
+    try {
+      gig.gig_tasks = req.body.gig_tasks ? JSON.parse(req.body.gig_tasks) : [];
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid tasks format' });
+    }
+
+    // Handle tags
+    gig.tags = req.body.tags ? 
+      req.body.tags.split(',').map(t => t.trim()).filter(t => t) : 
+      [];
+
+    // Handle file upload
+    if (req.file) {
+      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+      await Attachment.create({
+        type: 'gig',
+        foreign_key_id: gigId,
+        file_url: req.file.path
+      });
+    }
+
+    const updatedGig = await gig.save();
+    res.json({ message: 'Gig updated successfully', gig: updatedGig });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Update error:', err);
+    res.status(500).json({ error: 'Server error during update' });
   }
 };
-
 exports.deleteGig = async (req, res) => {
   try {
     const { gigId } = req.params;

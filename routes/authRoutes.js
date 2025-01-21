@@ -17,32 +17,44 @@ const generateToken = (user) => {
   );
 };
 
-// Google OAuth routes
+
+router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
+
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Optional: Force account selection
+  })
 );
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false }),
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=google`
+  }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Google login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
-// Apple OAuth routes
-// For Apple, you typically use a POST request because Apple sends a JWT to your callback URL.
-// Adjust these routes based on how your front-end interacts with Apple Sign In.
 router.post(
   '/apple',
   passport.authenticate('apple', { session: false }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Apple login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 

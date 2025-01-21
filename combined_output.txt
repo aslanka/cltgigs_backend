@@ -366,6 +366,80 @@ exports.updateBidStatus = async (req, res) => {
   }
 };
 
+--- controllers\bookmarkController.js ---
+const Bookmark = require('../models/Bookmark');
+const Gig = require('../models/Gig');
+
+exports.checkBookmarkStatus = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    const bookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    res.json({ isBookmarked: !!bookmark });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const { gigId } = req.params;
+    const userId = req.user.userId;
+
+    // Check if gig exists
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const existingBookmark = await Bookmark.findOne({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    if (existingBookmark) {
+      await Bookmark.deleteOne({ _id: existingBookmark._id });
+      return res.json({ isBookmarked: false });
+    }
+
+    const newBookmark = new Bookmark({
+      user_id: userId,
+      gig_id: gigId
+    });
+
+    await newBookmark.save();
+    res.json({ isBookmarked: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.getUserBookmarks = async (req, res) => {
+  try {
+    const bookmarks = await Bookmark.find({ user_id: req.user.userId })
+      .populate({
+        path: 'gig_id',
+        populate: {
+          path: 'user_id',
+          select: 'name profile_pic_url'
+        }
+      })
+      .sort({ created_at: -1 });
+
+    res.json(bookmarks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 --- controllers\gigController.js ---
 const Gig = require('../models/Gig');
 const Bid = require('../models/Bid');
@@ -657,29 +731,74 @@ exports.getMyGigs = async (req, res) => {
 exports.updateGig = async (req, res) => {
   try {
     const { gigId } = req.params;
-    const { title, description, price } = req.body;
     const userId = req.user.userId;
 
     const gig = await Gig.findById(gigId);
-    if (!gig) {
-      return res.status(404).json({ error: 'Gig not found' });
-    }
-    if (gig.user_id.toString() !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!gig) return res.status(404).json({ error: 'Gig not found' });
+    if (gig.user_id.toString() !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+    // Handle volunteer status first
+    const isVolunteer = req.body.is_volunteer === 'true';
+    gig.is_volunteer = isVolunteer;
+
+    // Reset budget fields for volunteer gigs
+    if (isVolunteer) {
+      gig.budget_range_min = null;
+      gig.budget_range_max = null;
+      gig.calculated_average_budget = null;
+    } else {
+      // Validate and set budget for paid gigs
+      const min = parseFloat(req.body.budget_range_min);
+      const max = parseFloat(req.body.budget_range_max);
+
+      if (isNaN(min) || isNaN(max) || min < 0 || max < 0 || min > max) {
+        return res.status(400).json({ error: 'Invalid budget range' });
+      }
+
+      gig.budget_range_min = min;
+      gig.budget_range_max = max;
+      gig.calculated_average_budget = (min + max) / 2;
     }
 
-    gig.title = title || gig.title;
-    gig.description = description || gig.description;
-    gig.price = price || gig.price;
-    await gig.save();
+    // Update other fields
+    gig.title = req.body.title || gig.title;
+    gig.description = req.body.description || gig.description;
+    gig.category = req.body.category || gig.category;
+    gig.zipcode = req.body.zipcode || gig.zipcode;
+    gig.start_date = req.body.start_date || null;
+    gig.completion_date = req.body.completion_date || null;
+    gig.team_size = parseInt(req.body.team_size) || 1;
 
-    return res.json({ message: 'Gig updated', gig });
+    // Handle tasks
+    try {
+      gig.gig_tasks = req.body.gig_tasks ? JSON.parse(req.body.gig_tasks) : [];
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid tasks format' });
+    }
+
+    // Handle tags
+    gig.tags = req.body.tags ? 
+      req.body.tags.split(',').map(t => t.trim()).filter(t => t) : 
+      [];
+
+    // Handle file upload
+    if (req.file) {
+      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+      await Attachment.create({
+        type: 'gig',
+        foreign_key_id: gigId,
+        file_url: req.file.path
+      });
+    }
+
+    const updatedGig = await gig.save();
+    res.json({ message: 'Gig updated successfully', gig: updatedGig });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Update error:', err);
+    res.status(500).json({ error: 'Server error during update' });
   }
 };
-
 exports.deleteGig = async (req, res) => {
   try {
     const { gigId } = req.params;
@@ -1414,8 +1533,36 @@ const bidSchema = new mongoose.Schema({
   }
 });
 
+bidSchema.index({ gig_id: 1, user_id: 1 }, { unique: true });
+
 module.exports = mongoose.model('Bid', bidSchema);
 
+
+
+--- models\Bookmark.js ---
+const mongoose = require('mongoose');
+
+const bookmarkSchema = new mongoose.Schema({
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  gig_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Gig',
+    required: true
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Add compound index to ensure unique bookmarks
+bookmarkSchema.index({ user_id: 1, gig_id: 1 }, { unique: true });
+
+module.exports = mongoose.model('Bookmark', bookmarkSchema);
 
 --- models\Conversation.js ---
 const mongoose = require('mongoose');
@@ -1451,14 +1598,26 @@ const gigSchema = new mongoose.Schema({
   gig_tasks: { type: [String], default: [] }, // Array of tasks
   budget_range_min: { type: Number }, // Required if not volunteer
   budget_range_max: { type: Number }, // Required if not volunteer
-  calculated_average_budget: { type: Number }, // Required if not volunteer
+  calculated_average_budget: { 
+    type: Number,
+    default: null,
+    validate: {
+      validator: function(v) {
+        // Allow null for volunteer gigs and numbers for paid gigs
+        return v === null || Number.isFinite(v);
+      },
+      message: '{VALUE} is not a valid number or null'
+    }
+  },
   is_volunteer: { type: Boolean, default: false }, // Default to false
   tags: { type: [String], default: [] }, // Array of tags
+  
 });
 
 // Index for zipcode and created_at for faster queries
 gigSchema.index({ zipcode: 1 });
 gigSchema.index({ created_at: -1 });
+gigSchema.index({ category: 1, is_volunteer: 1, calculated_average_budget: 1 });
 
 module.exports = mongoose.model('Gig', gigSchema);
 
@@ -1617,6 +1776,10 @@ const userSchema = new mongoose.Schema({
     redeemedAt: Date 
   }],
   unlockedTiers: [String],
+
+  googleId: { type: String, unique: true, sparse: true },
+facebookId: { type: String, unique: true, sparse: true },
+appleId: { type: String, unique: true, sparse: true },
 });
 
 module.exports = mongoose.model('User', userSchema);
@@ -1682,32 +1845,44 @@ const generateToken = (user) => {
   );
 };
 
-// Google OAuth routes
+
+router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
+
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+  }
+);
+
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Optional: Force account selection
+  })
 );
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false }),
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=google`
+  }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Google login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
-// Apple OAuth routes
-// For Apple, you typically use a POST request because Apple sends a JWT to your callback URL.
-// Adjust these routes based on how your front-end interacts with Apple Sign In.
 router.post(
   '/apple',
   passport.authenticate('apple', { session: false }),
   (req, res) => {
-    // Successful authentication, generate token and respond
     const token = generateToken(req.user);
-    res.json({ message: 'Apple login successful', token });
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
@@ -1740,6 +1915,22 @@ router.post('/:bidId/undeny', authenticate, undenyBid);
 // Add to bidRoutes.js
 router.delete('/:bidId', authenticate, deleteBid);
 router.patch('/:bidId/status', authenticate, updateBidStatus);
+
+module.exports = router;
+
+--- routes\bookmarkRoutes.js ---
+const express = require('express');
+const router = express.Router();
+const { authenticate } = require('../middlewares/auth');
+const {
+  checkBookmarkStatus,
+  toggleBookmark,
+  getUserBookmarks
+} = require('../controllers/bookmarkController');
+
+router.get('/check/:gigId', authenticate, checkBookmarkStatus);
+router.post('/toggle/:gigId', authenticate, toggleBookmark);
+router.get('/user', authenticate, getUserBookmarks);
 
 module.exports = router;
 
@@ -1936,6 +2127,7 @@ module.exports = router;
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const AppleStrategy = require('passport-apple').Strategy;
+const FacebookStrategy = require('passport-facebook').Strategy;
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
@@ -1957,22 +2149,59 @@ passport.use(
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: process.env.GOOGLE_CALLBACK_URL,
+      proxy: true // Add this if using reverse proxy/load balancer
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Find or create user
-        let user = await User.findOne({ googleId: profile.id });
+        let user = await User.findOne({ 
+          $or: [
+            { googleId: profile.id },
+            { email: profile.emails[0].value }
+          ]
+        });
+
         if (!user) {
-          // If email exists with another method, update record; otherwise create new.
+          user = new User({
+            name: profile.displayName,
+            email: profile.emails[0].value,
+            googleId: profile.id,
+            password: ''
+          });
+          await user.save();
+        } else if (!user.googleId) {
+          user.googleId = profile.id;
+          await user.save();
+        }
+
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  )
+);
+
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+      profileFields: ['id', 'emails', 'name']
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ facebookId: profile.id });
+        if (!user) {
           user = await User.findOne({ email: profile.emails[0].value });
           if (user) {
-            user.googleId = profile.id;
+            user.facebookId = profile.id;
           } else {
             user = new User({
-              name: profile.displayName,
+              name: `${profile.name.givenName} ${profile.name.familyName}`,
               email: profile.emails[0].value,
-              googleId: profile.id,
-              password: '', // no password since it's OAuth
+              facebookId: profile.id,
+              password: ''
             });
           }
           await user.save();
@@ -2164,6 +2393,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const bookmarkRoutes = require('./routes/bookmarkRoutes');
 
 // Initialize Express app
 const app = express();
@@ -2197,7 +2427,16 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://*.golockedin.com"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true }
+}));
 app.use(xss());
 app.use(express.json());
 
@@ -2247,6 +2486,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/bookmarks', bookmarkRoutes);
 
 // In production, serve React build or other front-end (omitted for brevity)
 

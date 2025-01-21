@@ -76,7 +76,7 @@ function CreateGig() {
       formData.append('tags', tags);
       if (file) formData.append('gigImage', file);
   
-      const response = await axios.post('/api/gigs', formData, {
+      const response = await axios.post('/gigs', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
