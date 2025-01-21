@@ -26,8 +26,9 @@ const gigSchema = new mongoose.Schema({
   },
   is_volunteer: { type: Boolean, default: false }, // Default to false
   tags: { type: [String], default: [] }, // Array of tags
-  
-});
+ 
+},
+{ timestamps: true });
 
 // Index for zipcode and created_at for faster queries
 gigSchema.index({ zipcode: 1 });

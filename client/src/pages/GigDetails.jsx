@@ -45,9 +45,14 @@ function GigDetails() {
   const formatPostedTime = (dateString) => {
     const createdDate = new Date(dateString);
     const currentDate = new Date();
-    const diffTime = Math.abs(currentDate - createdDate);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return `Posted ${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    const diffTime = Math.abs(currentDate - createdDate); // Difference in milliseconds
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Round down to nearest day
+  
+    if (diffDays === 0) {
+      return 'Posted Today';
+    } else {
+      return `Posted ${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    }
   };
 
   // Update the formatMemberSince function in GigDetails.jsx
