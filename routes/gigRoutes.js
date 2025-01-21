@@ -25,7 +25,7 @@ router.get('/:gigId', getGigDetails);
 router.get('/mygigs/owner', authenticate, getMyGigs);
 
 // Auth user can edit gig
-router.put('/:gigId', authenticate, updateGig);
+router.put('/:gigId', authenticate, gigUpload.single('gigImage'), updateGig);
 
 // Auth user can delete gig
 router.delete('/:gigId', authenticate, deleteGig);
