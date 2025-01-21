@@ -156,6 +156,7 @@ function Settings() {
               <div className="flex items-center gap-6 mb-8">
                 <div className="relative group">
                   <img
+                    crossOrigin="anonymous"
                     src={profile.profile_pic_url || "/default-avatar.png"}
                     alt="Profile"
                     className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"

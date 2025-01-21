@@ -1,10 +1,11 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Bell, X, User, MessageSquare, Settings, LogOut, Home, Briefcase } from 'lucide-react';
+import { Menu, Bell, X, User, MessageSquare, Settings, LogOut, Home, Briefcase, Trophy, Zap } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import axios from '../api/axiosInstance';
 import ProfilePicture from '../components/ProfilePicture';
 import Notifications from '../components/Notifications';
+import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 
 const Navbar = () => {
@@ -18,7 +19,6 @@ const Navbar = () => {
   const mobileMenuRef = useRef();
   const profileDropdownRef = useRef();
 
-  // Fetch profile and notifications
   useEffect(() => {
     if (token && userData?.userId) {
       axios.get(`/users/${userData.userId}`)
@@ -41,7 +41,6 @@ const Navbar = () => {
     }
   }, [token, userData]);
 
-  // Fetch notifications
   const fetchNotifications = async () => {
     try {
       const response = await axios.get('/notifications');
@@ -51,7 +50,6 @@ const Navbar = () => {
     }
   };
 
-  // Handle click outside mobile menu
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
@@ -65,51 +63,62 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle logout
   const handleLogout = () => {
     logout();
     setMobileMenuOpen(false);
     navigate('/');
   };
 
-  // NavLink component
   const NavLink = ({ to, icon: Icon, children, onClick }) => (
     <Link
       to={to}
       onClick={onClick}
-      className="flex items-center space-x-2 px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+      className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-xl transition-all"
     >
-      <Icon size={20} />
-      <span>{children}</span>
+      <Icon className="w-5 h-5 text-blue-600" />
+      <span className="font-medium">{children}</span>
     </Link>
   );
 
   return (
-    <nav className="bg-white border-b border-gray-200 fixed w-full top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4">
+    <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 fixed w-full top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <span className="text-2xl font-bold text-blue-600 hidden sm:block">CharlotteGigs</span>
-            <span className="text-2xl font-bold text-blue-600 sm:hidden">CltGigs</span>
+            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              CharlotteGigs
+            </span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden md:flex items-center space-x-6">
             {token ? (
               <>
-                <NavLink to="/mygigs" icon={Briefcase}>My Gigs</NavLink>
-                <NavLink to="/messages" icon={MessageSquare}>Messages</NavLink>
-                
-                {/* Notifications */}
+                <div className="flex items-center space-x-4">
+                  <Link 
+                    to="/leaderboard" 
+                    className="flex items-center space-x-2 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    <span className="font-medium text-gray-700">Top 5</span>
+                  </Link>
+                  
+                  <button
+                    onClick={() => navigate('/create-gig')}
+                    className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Zap className="w-5 h-5" />
+                    <span>Post Gig</span>
+                  </button>
+                </div>
+
                 <button
                   onClick={() => {
                     setNotificationsOpen(!notificationsOpen);
-                    fetchNotifications(); // Refresh notifications when opening
+                    fetchNotifications();
                   }}
-                  className="relative p-2 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="relative p-2 text-gray-600 hover:text-gray-900 transition-colors"
                 >
-                  <Bell size={20} />
+                  <Bell className="w-6 h-6" />
                   {unreadCount > 0 && (
                     <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                       {unreadCount}
@@ -117,64 +126,87 @@ const Navbar = () => {
                   )}
                 </button>
 
-                {/* Profile Dropdown */}
-                <div className="relative ml-3" ref={profileDropdownRef}>
+                <div className="relative" ref={profileDropdownRef}>
                   <button
-                    onMouseEnter={() => setIsProfileDropdownOpen(true)}
-                    className="flex items-center space-x-2"
+                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                    className="group"
                   >
                     <ProfilePicture
                       profilePicUrl={profile?.profile_pic_url}
                       name={profile?.name}
-                      size="8"
+                      size="10"
+                      className="hover:ring-2 ring-blue-500 transition-all"
                     />
                   </button>
 
-                  {/* Dropdown Menu */}
-                  {isProfileDropdownOpen && (
-                    <div
-                      className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg"
-                      onMouseEnter={() => setIsProfileDropdownOpen(true)}
-                      onMouseLeave={() => setIsProfileDropdownOpen(false)}
-                    >
-                      <NavLink to="/settings" icon={Settings} onClick={() => setIsProfileDropdownOpen(false)}>
-                        Settings
-                      </NavLink>
-                      <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setIsProfileDropdownOpen(false)}>
-                        Profile
-                      </NavLink>
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center space-x-2 w-full px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  <AnimatePresence>
+                    {isProfileDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden"
                       >
-                        <LogOut size={20} />
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  )}
+                        <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50">
+                          <div className="flex items-center space-x-3">
+                            <ProfilePicture
+                              profilePicUrl={profile?.profile_pic_url}
+                              name={profile?.name}
+                              size="12"
+                            />
+                            <div>
+                              <p className="font-medium text-gray-900">{profile?.name}</p>
+                              <p className="text-sm text-blue-600">{profile?.xp || 0} XP</p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="p-2">
+                          <NavLink to="/mygigs" icon={Briefcase}>Activity</NavLink>
+                          <NavLink to="/messages" icon={MessageSquare}>Messages</NavLink>
+                          <NavLink to="/settings" icon={Settings}>Settings</NavLink>
+                          <NavLink to={`/profile/${profile?._id}`} icon={User}>Profile</NavLink>
+                          <button
+                            onClick={handleLogout}
+                            className="flex items-center space-x-3 w-full px-4 py-3 text-gray-700 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <LogOut className="w-5 h-5 text-red-600" />
+                            <span className="font-medium">Logout</span>
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </>
             ) : (
-              <>
-                <Link to="/login" className="text-gray-700 hover:text-blue-600">Login</Link>
-                <Link to="/register" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                  Register
+              <div className="flex items-center space-x-4">
+                <Link 
+                  to="/login" 
+                  className="px-4 py-2 text-gray-600 hover:text-blue-600 font-medium transition-colors"
+                >
+                  Sign In
                 </Link>
-              </>
+                <Link 
+                  to="/register" 
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all"
+                >
+                  Get Started
+                </Link>
+              </div>
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center">
+          <div className="md:hidden flex items-center space-x-3">
             {token && (
               <button
                 onClick={() => {
                   setNotificationsOpen(!notificationsOpen);
-                  fetchNotifications(); // Refresh notifications when opening
+                  fetchNotifications();
                 }}
-                className="relative p-2 mr-2 text-gray-700 hover:bg-blue-50 rounded-lg"
+                className="relative p-2 text-gray-600"
               >
-                <Bell size={20} />
+                <Bell className="w-6 h-6" />
                 {unreadCount > 0 && (
                   <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                     {unreadCount}
@@ -184,52 +216,95 @@ const Navbar = () => {
             )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-gray-700 hover:bg-blue-50 rounded-lg"
+              className="p-2 text-gray-600 hover:text-gray-900"
             >
-              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div ref={mobileMenuRef} className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
-            {token ? (
-              <>
-                <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>Home</NavLink>
-                <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>My Gigs</NavLink>
-                <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>Messages</NavLink>
-                <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>Settings</NavLink>
-                <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setMobileMenuOpen(false)}>Profile</NavLink>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center space-x-2 w-full px-4 py-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
-                >
-                  <LogOut size={20} />
-                  <span>Logout</span>
-                </button>
-              </>
-            ) : (
-              <div className="space-y-2 p-2">
-                <Link to="/login" className="block w-full text-center py-2 text-gray-700 hover:text-blue-600">
-                  Login
-                </Link>
-                <Link to="/register" className="block w-full text-center py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                  Register
-                </Link>
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            ref={mobileMenuRef}
+            className="md:hidden fixed inset-y-0 right-0 w-80 bg-white shadow-xl z-50"
+          >
+            <div className="h-full flex flex-col">
+              <div className="p-6 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xl font-bold text-gray-900">Menu</span>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-2 hover:bg-gray-50 rounded-lg"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                
+                {token && profile && (
+                  <div className="mt-4 flex items-center space-x-3">
+                    <ProfilePicture
+                      profilePicUrl={profile?.profile_pic_url}
+                      name={profile?.name}
+                      size="12"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">{profile.name}</p>
+                      <p className="text-sm text-blue-600">{profile.xp || 0} XP</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Notifications Panel */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-2">
+                {token ? (
+                  <>
+                    <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>Home</NavLink>
+                    <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>My Gigs</NavLink>
+                    <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>Messages</NavLink>
+                    <NavLink to="/leaderboard" icon={Trophy} onClick={() => setMobileMenuOpen(false)}>Leaderboard</NavLink>
+                    <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>Settings</NavLink>
+                    <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setMobileMenuOpen(false)}>Profile</NavLink>
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <LogOut className="w-5 h-5" />
+                        <span className="font-medium">Log Out</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <Link
+                      to="/login"
+                      className="block w-full px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      to="/register"
+                      className="block w-full px-4 py-3 text-center bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+                    >
+                      Get Started
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Notifications
         isOpen={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}
-        refreshNotifications={fetchNotifications} // Pass the refresh function
+        refreshNotifications={fetchNotifications}
       />
     </nav>
   );

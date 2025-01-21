@@ -34,6 +34,9 @@ exports.getAllConversationsForUser = async (req, res) => {
       const otherUser = await User.findById(otherUserId).lean();
       conv.otherUserName = otherUser?.name || 'Unknown User';
       conv.otherUserPic = otherUser?.profile_pic_url || '';
+      conv.otherUserId = otherUserId.toString();
+      conv.gigId = conv.gig_id.toString();
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
 
       // Mark if conversation is blocked for the current user
       if (conv.gig_owner_id.toString() === userId && conv.blocked_by_owner) {
@@ -100,7 +103,7 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
-    // Fetch the sender's name
+    // Fetch the sender's details
     const sender = await User.findById(userId);
     if (!sender) {
       return res.status(404).json({ error: 'Sender not found' });
@@ -136,15 +139,18 @@ exports.sendMessage = async (req, res) => {
     });
     await newMsg.save();
 
-    // Emit the new message to the conversation room
+    // Emit the new message to the conversation room with sender details
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
-      _id: newMsg._id,
-      conversation_id: newMsg.conversation_id,
-      sender_id: userId,
+      _id: newMsg._id.toString(),
+      conversation_id: newMsg.conversation_id.toString(),
+      sender_id: newMsg.sender_id.toString(),
       content: newMsg.content,
       file_url: newMsg.file_url,
       created_at: newMsg.created_at,
+      // Additional sender info
+      sender_name: sender.name,
+      sender_pic: sender.profile_pic_url,
     });
 
     // Determine the recipient of the message
@@ -156,8 +162,8 @@ exports.sendMessage = async (req, res) => {
     const notification = new Notification({
       user_id: recipientId,
       type: 'message',
-      message: `You have a new message from ${sender.name}`, // Use the sender's name
-      link: `/messages/${conversationId}`, // Add the link to the conversation
+      message: `You have a new message from ${sender.name}`,
+      link: `/messages/${conversationId}`,
     });
     await notification.save();
 
@@ -170,6 +176,7 @@ exports.sendMessage = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 // In the deleteMessage function
 exports.deleteMessage = async (req, res) => {

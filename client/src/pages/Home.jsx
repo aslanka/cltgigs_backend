@@ -3,7 +3,7 @@ import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
-import { Search, MapPin, Filter, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Star, Award, Rocket } from 'lucide-react';
+import { Search, MapPin, Flag, Filter, ClipboardList, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Star, Award, Rocket } from 'lucide-react';
 import Mascot from '../assets/mascot.svg';
 
 // Skeleton Loading Component
@@ -271,112 +271,149 @@ const Home = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <div className="bg-white p-3 rounded-xl shadow-sm">
-              <span className="text-lg font-medium">👑 Top Gigster This Week:</span>
-              <span className="ml-2 text-blue-600">SarahM (2450 XP)</span>
-            </div>
+              {/* Leaderboard Link */}
+<Link 
+  to="/leaderboard" 
+  className="bg-white p-3 rounded-xl shadow-sm hover:bg-gray-50 transition-colors"
+>
+  <span className="text-lg font-medium hover:text-blue-600">👑 Top Gigster This Week:</span>
+  <span className="ml-2 text-blue-600 hover:text-blue-700">SarahM (2450 XP)</span>
+</Link>
           </div>
         </div>
 
-        {/* Gig Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <AnimatePresence>
-            {isLoading ? (
-              Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
-            ) : (
-              gigs.map((gig) => {
-                const { emoji, gradient } = getCategoryDetails(gig.category);
+{/* Gig Cards Grid */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+  <AnimatePresence>
+    {isLoading ? (
+      Array.from({ length: limit }).map((_, idx) => <SkeletonCard key={idx} />)
+    ) : (
+      gigs.map((gig) => {
+        const { emoji, gradient } = getCategoryDetails(gig.category);
+        const daysAgo = Math.floor((new Date() - new Date(gig.created_at)) / (1000 * 60 * 60 * 24));
+        const taskCount = gig.gig_tasks?.length || 0;
+        const progress = Math.min(gig.bids || 0, 10) * 10;
 
-                return (
-                  <motion.div
-                    key={gig._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    layout
-                  >
-                    <Link
-                      to={`/gigs/${gig._id}`}
-                      className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col"
+        return (
+          <motion.div
+            key={gig._id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            layout
+          >
+            <Link
+              to={`/gigs/${gig._id}`}
+              className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col relative"
+            >
+              {/* Report Button */}
+              <button 
+                className="absolute top-3 right-3 z-10 text-gray-400 hover:text-red-500 transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Handle report logic here
+                }}
+              >
+                <Flag className="w-5 h-5" />
+              </button>
+
+              {/* Image/Category Section */}
+              <div className={`relative bg-gradient-to-br ${gradient} h-48 flex items-center justify-center`}>
+                {gig.attachment ? (
+                  <img
+                    crossOrigin='anonymous'
+                    src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`}
+                    alt={gig.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-7xl transform transition group-hover:scale-110">{emoji}</span>
+                )}
+                <div className="absolute top-3 left-3 flex space-x-2">
+                  {gig.tags?.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-white/90 text-xs font-medium rounded-full backdrop-blur-sm"
                     >
-                      {/* Image/Category Section */}
-                      <div className={`relative bg-gradient-to-br ${gradient} h-48 flex items-center justify-center`}>
-                        {gig.attachment ? (
-                          <img
-                            crossOrigin='anonymous'
-                            src={`${import.meta.env.VITE_SERVER}/${gig.attachment.file_url}`}
-                            alt={gig.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-7xl transform transition group-hover:scale-110">{emoji}</span>
-                        )}
-                        <div className="absolute top-3 left-3 flex space-x-2">
-                          {gig.tags?.map((tag, index) => (
-                            <span
-                              key={index}
-                              className="px-2 py-1 bg-white/90 text-xs font-medium rounded-full backdrop-blur-sm"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="absolute bottom-3 right-3 flex items-center space-x-1 bg-white/90 px-3 py-1 rounded-full backdrop-blur-sm">
-                          <Star className="w-4 h-4 text-yellow-500" />
-                          <span className="text-sm font-medium">4.8</span>
-                        </div>
-                      </div>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
 
-                      {/* Card Content */}
-                      <div className="p-4 flex-1 flex flex-col">
-                        <div className="flex justify-between items-start mb-3">
-                          <h3 className="text-xl font-bold text-gray-900">{gig.title}</h3>
-                          <div className="flex items-center space-x-1">
-                            <Users className="w-5 h-5 text-gray-500" />
-                            <span className="font-medium">{gig.team_size}</span>
-                          </div>
-                        </div>
+              {/* Card Content */}
+              <div className="p-4 flex-1 flex flex-col">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-xl font-bold text-gray-900">{gig.title}</h3>
+                  <div className="flex items-center space-x-1">
+                    {gig.user_rating > 0 && (
+                      <>
+                        <Star className="w-4 h-4 text-yellow-500" />
+                        <span className="font-medium">{gig.user_rating.toFixed(1)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
 
-                        <p className="text-gray-600 mb-4 line-clamp-2 flex-1">{gig.description}</p>
+                {/* Subtasks */}
+                <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+                  <ClipboardList className="w-4 h-4" />
+                  <span>{taskCount} subtasks</span>
+                </div>
 
-                        {/* Progress Bar */}
-                        <div className="mb-4">
-                          <div className="h-2 bg-gray-200 rounded-full">
-                            <div 
-                              className="h-2 bg-blue-500 rounded-full transition-all"
-                              style={{ width: `${Math.min((gig.applications || 0) * 20, 100)}%` }}
-                            />
-                          </div>
-                          <div className="text-sm text-gray-500 mt-1">
-                            {gig.applications || 0} applications • 2 days left
-                          </div>
-                        </div>
+                <p className="text-gray-600 mb-3 line-clamp-2 flex-1">{gig.description}</p>
 
-                        {/* Gig Details */}
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center space-x-2">
-                            <MapPin className="w-4 h-4 text-gray-500" />
-                            <span>{gig.zipcode}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {gig.is_volunteer ? (
-                              <Heart className="w-4 h-4 text-red-500" />
-                            ) : (
-                              <DollarSign className="w-4 h-4 text-green-500" />
-                            )}
-                            <span className={gig.is_volunteer ? 'text-red-600' : 'text-green-600'}>
-                              {gig.is_volunteer ? 'Volunteer Opportunity' : `$${gig.budget_range_min}-$${gig.budget_range_max}`}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })
-            )}
-          </AnimatePresence>
-        </div>
+                {/* Progress Bar */}
+<div className="mb-3">
+  <div className="h-2 bg-gray-200 rounded-full">
+    <div 
+      className="h-2 bg-blue-500 rounded-full transition-all"
+      style={{ width: `${Math.min(gig.bidCount || 0, 10) * 10}%` }}
+    />
+  </div>
+  <div className="text-sm text-gray-500 mt-1">
+    {gig.bidCount || 0}/10 bids
+  </div>
+</div>
+
+                {/* Days Ago and Bids */}
+                <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
+                  <div className="flex items-center space-x-1">
+                    <Calendar className="w-4 h-4" />
+                    <span>{daysAgo === 0 ? 'Today' : `${daysAgo}d ago`}</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Users className="w-4 h-4" />
+                    <span>{gig.bidCount || 0} bids</span>
+                  </div>
+                </div>
+
+                {/* Gig Details */}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="w-4 h-4 text-gray-500" />
+                    <span>{gig.zipcode}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {gig.is_volunteer ? (
+                      <Heart className="w-4 h-4 text-red-500" />
+                    ) : (
+                      <DollarSign className="w-4 h-4 text-green-500" />
+                    )}
+                    <span className={gig.is_volunteer ? 'text-red-600' : 'text-green-600'}>
+                      {gig.is_volunteer ? 'Volunteer Opportunity' : `$${gig.budget_range_min}-$${gig.budget_range_max}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
+        );
+      })
+    )}
+  </AnimatePresence>
+</div>
 
         {/* Pagination */}
         <div className="flex justify-center items-center space-x-4 mt-12">

@@ -541,14 +541,30 @@ exports.createGig = async (req, res) => {
       start_date,
       completion_date,
       team_size,
-      gig_tasks,
+      gig_tasks: gigTasksRaw,
       budget_range_min,
       budget_range_max,
-      is_volunteer,
+      is_volunteer: isVolunteerString,
       tags,
     } = req.body;
 
     const userId = req.user.userId;
+
+    // Convert string boolean to actual boolean
+    const is_volunteer = isVolunteerString === 'true';
+
+    // Parse gig tasks from JSON string
+    let gig_tasks = [];
+    if (gigTasksRaw) {
+      try {
+        gig_tasks = JSON.parse(gigTasksRaw);
+        if (!Array.isArray(gig_tasks)) {
+          return res.status(400).json({ error: 'Gig tasks must be an array' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid gig tasks format' });
+      }
+    }
 
     // Validate budget fields if not a volunteer gig
     if (!is_volunteer) {
@@ -558,7 +574,7 @@ exports.createGig = async (req, res) => {
       if (isNaN(budget_range_min) || isNaN(budget_range_max)) {
         return res.status(400).json({ error: 'Budget range must be valid numbers' });
       }
-      if (budget_range_min > budget_range_max) {
+      if (parseFloat(budget_range_min) > parseFloat(budget_range_max)) {
         return res.status(400).json({ error: 'Budget range min must be less than or equal to max' });
       }
     }
@@ -578,12 +594,12 @@ exports.createGig = async (req, res) => {
       start_date: start_date || null,
       completion_date: completion_date || null,
       team_size: team_size || 1,
-      gig_tasks: gig_tasks || [],
+      gig_tasks,
       budget_range_min: is_volunteer ? null : parseFloat(budget_range_min),
       budget_range_max: is_volunteer ? null : parseFloat(budget_range_max),
       calculated_average_budget,
       is_volunteer,
-      tags: tags || [],
+      tags: tags ? tags.split(',') : [],
     });
 
     // Save gig to database
@@ -762,6 +778,9 @@ exports.getAllConversationsForUser = async (req, res) => {
       const otherUser = await User.findById(otherUserId).lean();
       conv.otherUserName = otherUser?.name || 'Unknown User';
       conv.otherUserPic = otherUser?.profile_pic_url || '';
+      conv.otherUserId = otherUserId.toString();
+      conv.gigId = conv.gig_id.toString();
+      conv.otherUserPic = otherUser?.profile_pic_url || '';
 
       // Mark if conversation is blocked for the current user
       if (conv.gig_owner_id.toString() === userId && conv.blocked_by_owner) {
@@ -828,7 +847,7 @@ exports.sendMessage = async (req, res) => {
 
     const userId = req.user.userId;
 
-    // Fetch the sender's name
+    // Fetch the sender's details
     const sender = await User.findById(userId);
     if (!sender) {
       return res.status(404).json({ error: 'Sender not found' });
@@ -864,15 +883,18 @@ exports.sendMessage = async (req, res) => {
     });
     await newMsg.save();
 
-    // Emit the new message to the conversation room
+    // Emit the new message to the conversation room with sender details
     const io = getIO();
     io.to(conversationId).emit('newMessage', {
-      _id: newMsg._id,
-      conversation_id: newMsg.conversation_id,
-      sender_id: userId,
+      _id: newMsg._id.toString(),
+      conversation_id: newMsg.conversation_id.toString(),
+      sender_id: newMsg.sender_id.toString(),
       content: newMsg.content,
       file_url: newMsg.file_url,
       created_at: newMsg.created_at,
+      // Additional sender info
+      sender_name: sender.name,
+      sender_pic: sender.profile_pic_url,
     });
 
     // Determine the recipient of the message
@@ -884,8 +906,8 @@ exports.sendMessage = async (req, res) => {
     const notification = new Notification({
       user_id: recipientId,
       type: 'message',
-      message: `You have a new message from ${sender.name}`, // Use the sender's name
-      link: `/messages/${conversationId}`, // Add the link to the conversation
+      message: `You have a new message from ${sender.name}`,
+      link: `/messages/${conversationId}`,
     });
     await notification.save();
 
@@ -898,6 +920,7 @@ exports.sendMessage = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 // In the deleteMessage function
 exports.deleteMessage = async (req, res) => {
@@ -2081,14 +2104,19 @@ let io;
 function init(server) {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_ORIGIN,// Allow your frontend origin
-      methods: ['GET', 'POST'],        // Allowed HTTP methods
-      credentials: true,               // Allow credentials (if needed)
+      origin: process.env.FRONTEND_ORIGIN,
+      methods: ['GET', 'POST'],
+      credentials: true
     },
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+      skipMiddlewares: true
+    }
   });
 
-  // Optional: Add event listeners for debugging
+  // Add ping/pong handling
   io.on('connection', (socket) => {
+    socket.on('ping', (cb) => cb());
     console.log('A user connected:', socket.id);
 
     socket.on('disconnect', () => {
