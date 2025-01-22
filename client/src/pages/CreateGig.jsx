@@ -29,6 +29,7 @@ function CreateGig() {
   const [tags, setTags] = useState('');
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
+  const [isService, setIsService] = useState(false);
 
   const steps = ['Basics', 'Details', 'Finalize'];
   const BASE_XP = 150;
@@ -74,6 +75,7 @@ function CreateGig() {
       formData.append('budget_range_max', budgetRange[1]);
       formData.append('is_volunteer', isVolunteer); // Send as boolean
       formData.append('tags', tags);
+      formData.append('service_offered', isService);
       if (file) formData.append('gigImage', file);
   
       const response = await axios.post('/gigs', formData, {
@@ -220,6 +222,19 @@ function CreateGig() {
                       ))}
                     </div>
                   </div>
+                  <div className="flex items-center space-x-2 p-3 bg-green-100 rounded-lg">
+  <input 
+    type="checkbox" 
+    id="isService" 
+    checked={isService}
+    onChange={(e) => setIsService(e.target.checked)}
+    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+  />
+  <label htmlFor="isService" className="flex items-center gap-1 text-gray-700">
+    <Rocket size={16} />
+    This is a Service Offering (You are offering a service, not a one-time gig)
+  </label>
+</div>
                 </div>
               )}
 

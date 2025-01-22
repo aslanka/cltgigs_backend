@@ -17,3 +17,10 @@ exports.authenticate = (req, res, next) => {
     return res.status(403).json({ error: 'Invalid token' });
   }
 };
+
+exports.authorizeProfileUpdate = (req, res, next) => {
+  if (req.params.userId !== req.user.userId) {
+    return res.status(403).json({ error: 'Unauthorized profile access' });
+  }
+  next();
+};
