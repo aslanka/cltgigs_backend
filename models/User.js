@@ -29,21 +29,12 @@ const userSchema = new mongoose.Schema({
   social_media_links: [{
     type: {
       type: String,
-      enum: ['github', 'linkedin', 'twitter', 'website']
+      enum: ['github', 'linkedin', 'twitter', 'website', 'youtube'],
+      required: true
     },
     url: {
       type: String,
-      validate: {
-        validator: v => {
-          try {
-            new URL(v);
-            return true;
-          } catch (e) {
-            return false;
-          }
-        },
-        message: 'Invalid URL format'
-      }
+      required: true,
     }
   }],
   skills: [{ type: String, maxlength: 50 }],

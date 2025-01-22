@@ -25,5 +25,11 @@ router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
 
 router.get('/:userId/block-status', authenticate, userController.checkBlockStatus);
 
+router.delete('/:userId/profile-pic', authenticate, userController.deleteProfilePicture);
+
+// Social links routes
+router.post('/:userId/social-links', authenticate, userController.addSocialLink);
+router.delete('/:userId/social-links/:index', authenticate, userController.deleteSocialLink);
+
 
 module.exports = router;

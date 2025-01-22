@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const { resizeImage } = require('../middlewares/upload');
+const path = require('path');
+const fs = require('fs');
 
 // Get public profile by userId
 exports.getPublicProfile = async (req, res) => {
@@ -24,7 +26,6 @@ exports.checkBlockStatus = async (req, res) => {
   }
 };
 
-// controllers/userController.js
 exports.uploadCertifications = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -68,12 +69,11 @@ exports.updateProfile = async (req, res) => {
       experience: Math.max(0, parseInt(experience)) || 0,
       tagline,
       skills: Array.isArray(skills) ? skills : [],
-      social_media_links: this.validateSocialLinks(socialLinks)
+      social_media_links: Array.isArray(socialLinks) ? socialLinks : []
     };
 
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
-      runValidators: true
     }).select('-password');
 
     res.json(user);
@@ -134,33 +134,80 @@ exports.removePortfolioItem = async (req, res) => {
   }
 };
 
-exports.validateSocialLinks = (links) => {
-  if (!Array.isArray(links)) return [];
-  const validEntries = [];
-  const allowedDomains = {
-    github: 'github.com',
-    linkedin: 'linkedin.com',
-    twitter: 'twitter.com',
-    website: ''
-  };
-
-  links.forEach(link => {
-    if (typeof link === 'object' && link.type && link.url) {
-      try {
-        const urlObj = new URL(link.url);
-        if (allowedDomains[link.type] && 
-          (link.type === 'website' || urlObj.hostname.endsWith(allowedDomains[link.type]))
-        ) {
-          validEntries.push({
-            type: link.type,
-            url: link.url
-          });
-        }
-      } catch (e) {
-        // Invalid URL
-      }
+exports.deleteProfilePicture = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
-  });
 
-  return validEntries;
+    const user = await User.findById(userId);
+    if (!user.profile_pic_url) {
+      return res.status(400).json({ error: 'No profile picture to delete' });
+    }
+
+    // Delete file from filesystem
+    const filePath = path.join(__dirname, '..', user.profile_pic_url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    user.profile_pic_url = null;
+    await user.save();
+    
+    res.json({ message: 'Profile picture deleted', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.addSocialLink = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type, url } = req.body;
+
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const user = await User.findById(userId);
+    user.social_media_links.push({ type, url });
+    await user.save();
+    
+    res.json({ 
+      message: 'Social link added', 
+      links: user.social_media_links 
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteSocialLink = async (req, res) => {
+  try {
+    const { userId, index } = req.params;
+
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const user = await User.findById(userId);
+    if (index < 0 || index >= user.social_media_links.length) {
+      return res.status(400).json({ error: 'Invalid link index' });
+    }
+
+    user.social_media_links.splice(index, 1);
+    await user.save();
+    
+    res.json({ 
+      message: 'Social link deleted', 
+      links: user.social_media_links 
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 };

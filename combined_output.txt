@@ -625,6 +625,7 @@ exports.createGig = async (req, res) => {
       budget_range_min,
       budget_range_max,
       is_volunteer: isVolunteerString,
+      service_offered: serviceOfferedString, // Add this line
       tags,
     } = req.body;
 
@@ -632,6 +633,7 @@ exports.createGig = async (req, res) => {
 
     // Convert string boolean to actual boolean
     const is_volunteer = isVolunteerString === 'true';
+    const service_offered = serviceOfferedString === 'true'; // Add this line
 
     // Parse gig tasks from JSON string
     let gig_tasks = [];
@@ -671,6 +673,7 @@ exports.createGig = async (req, res) => {
       description,
       category,
       zipcode,
+      service_offered, // Add this line
       start_date: start_date || null,
       completion_date: completion_date || null,
       team_size: team_size || 1,
@@ -1221,6 +1224,64 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
+--- controllers\reportController.js ---
+// controllers/reportController.js
+const Report = require('../models/Report');
+
+exports.createReport = async (req, res) => {
+  try {
+    const { reporterId, creatorId, contentId, contentType, reportReason, reportDetails, additionalInfo } = req.body;
+
+    if (!reportReason || !reportDetails) {
+      return res.status(400).json({ error: 'Reason and details are required.' });
+    }
+
+    const newReport = new Report({
+      reporterId,
+      creatorId,
+      contentId,
+      contentType,
+      reportReason,
+      reportDetails,
+      additionalInfo,
+    });
+
+    await newReport.save();
+
+    res.status(201).json({ message: 'Report submitted successfully.' });
+  } catch (error) {
+    console.error('Error submitting report:', error);
+    res.status(500).json({ error: 'Failed to submit report.' });
+  }
+};
+
+exports.getReports = async (req, res) => {
+  try {
+    const reports = await Report.find().populate('reporterId', 'name').populate('creatorId', 'name');
+    res.status(200).json(reports);
+  } catch (error) {
+    console.error('Error fetching reports:', error);
+    res.status(500).json({ error: 'Failed to fetch reports.' });
+  }
+};
+
+exports.getReportById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const report = await Report.findById(id).populate('reporterId', 'name').populate('creatorId', 'name');
+
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    res.status(200).json(report);
+  } catch (error) {
+    console.error('Error fetching report:', error);
+    res.status(500).json({ error: 'Failed to fetch report.' });
+  }
+};
+
+
 --- controllers\reviewController.js ---
 const Review = require('../models/Review');
 const User = require('../models/User');
@@ -1320,6 +1381,8 @@ exports.deleteReview = async (req, res) => {
 --- controllers\userController.js ---
 const User = require('../models/User');
 const { resizeImage } = require('../middlewares/upload');
+const path = require('path');
+const fs = require('fs');
 
 // Get public profile by userId
 exports.getPublicProfile = async (req, res) => {
@@ -1344,7 +1407,6 @@ exports.checkBlockStatus = async (req, res) => {
   }
 };
 
-// controllers/userController.js
 exports.uploadCertifications = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1388,12 +1450,11 @@ exports.updateProfile = async (req, res) => {
       experience: Math.max(0, parseInt(experience)) || 0,
       tagline,
       skills: Array.isArray(skills) ? skills : [],
-      social_media_links: this.validateSocialLinks(socialLinks)
+      social_media_links: Array.isArray(socialLinks) ? socialLinks : []
     };
 
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
-      runValidators: true
     }).select('-password');
 
     res.json(user);
@@ -1454,55 +1515,109 @@ exports.removePortfolioItem = async (req, res) => {
   }
 };
 
-exports.validateSocialLinks = (links) => {
-  if (!Array.isArray(links)) return [];
-  const validEntries = [];
-  const allowedDomains = {
-    github: 'github.com',
-    linkedin: 'linkedin.com',
-    twitter: 'twitter.com',
-    website: ''
-  };
-
-  links.forEach(link => {
-    if (typeof link === 'object' && link.type && link.url) {
-      try {
-        const urlObj = new URL(link.url);
-        if (allowedDomains[link.type] && 
-          (link.type === 'website' || urlObj.hostname.endsWith(allowedDomains[link.type]))
-        ) {
-          validEntries.push({
-            type: link.type,
-            url: link.url
-          });
-        }
-      } catch (e) {
-        // Invalid URL
-      }
+exports.deleteProfilePicture = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
-  });
 
-  return validEntries;
+    const user = await User.findById(userId);
+    if (!user.profile_pic_url) {
+      return res.status(400).json({ error: 'No profile picture to delete' });
+    }
+
+    // Delete file from filesystem
+    const filePath = path.join(__dirname, '..', user.profile_pic_url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    user.profile_pic_url = null;
+    await user.save();
+    
+    res.json({ message: 'Profile picture deleted', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.addSocialLink = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type, url } = req.body;
+
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const user = await User.findById(userId);
+    user.social_media_links.push({ type, url });
+    await user.save();
+    
+    res.json({ 
+      message: 'Social link added', 
+      links: user.social_media_links 
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.deleteSocialLink = async (req, res) => {
+  try {
+    const { userId, index } = req.params;
+
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const user = await User.findById(userId);
+    if (index < 0 || index >= user.social_media_links.length) {
+      return res.status(400).json({ error: 'Invalid link index' });
+    }
+
+    user.social_media_links.splice(index, 1);
+    await user.save();
+    
+    res.json({ 
+      message: 'Social link deleted', 
+      links: user.social_media_links 
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 };
 
 --- middlewares\auth.js ---
+// middlewares/auth.js
 const jwt = require('jsonwebtoken');
 
 exports.authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ error: 'No authorization header' });
+  const clientIP = req.ip.replace('::ffff:', '').replace('::1', '127.0.0.1');
+
+  // Admin IP check
+  if (process.env.ADMIN_IPS.split(',').includes(clientIP)) {
+    req.user = { role: 'admin' };
+    return next();
   }
+
+  // JWT Authentication
+  if (!authHeader) return res.status(401).json({ error: 'No authorization header' });
+  
   const token = authHeader.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { userId: ..., email: ... }
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid token' });
+    res.status(403).json({ error: 'Invalid token' });
   }
 };
 
@@ -1759,12 +1874,15 @@ const reportSchema = new mongoose.Schema({
   reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   contentId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  contentType: { type: String, required: true },
-  reportDetails: { type: String, required: true },
+  contentType: { type: String, required: true }, // "gig" or "profile"
+  reportReason: { type: String, required: true }, // Dropdown value
+  reportDetails: { type: String, required: true }, // User's detailed description
+  additionalInfo: { type: String }, // Optional field for extra details
   timestamp: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('Report', reportSchema);
+
 
 --- models\Review.js ---
 const mongoose = require('mongoose');
@@ -1830,21 +1948,12 @@ const userSchema = new mongoose.Schema({
   social_media_links: [{
     type: {
       type: String,
-      enum: ['github', 'linkedin', 'twitter', 'website']
+      enum: ['github', 'linkedin', 'twitter', 'website', 'youtube'],
+      required: true
     },
     url: {
       type: String,
-      validate: {
-        validator: v => {
-          try {
-            new URL(v);
-            return true;
-          } catch (e) {
-            return false;
-          }
-        },
-        message: 'Invalid URL format'
-      }
+      required: true,
     }
   }],
   skills: [{ type: String, maxlength: 50 }],
@@ -2170,34 +2279,26 @@ router.delete('/:notificationId', authenticate, deleteNotification);
 module.exports = router;
 
 --- routes\reportRoutes.js ---
-// routes/reportRoutes.js
 const express = require('express');
 const router = express.Router();
-const Report = require('../models/Report'); // Assuming you have a Report model
 const { authenticate } = require('../middlewares/auth');
+const {
+  createReport,
+  getReports,
+  getReportById,
+} = require('../controllers/reportController');
 
-router.post('/', authenticate, async (req, res) => {
-  try {
-    const { reporterId, creatorId, contentId, contentType, reportDetails, timestamp } = req.body;
+// Route to create a new report
+router.post('/', authenticate, createReport);
 
-    const newReport = new Report({
-      reporterId,
-      creatorId,
-      contentId,
-      contentType,
-      reportDetails,
-      timestamp,
-    });
+// Route to get all reports (admin use)
+router.get('/', authenticate, getReports);
 
-    await newReport.save();
-    res.status(201).json({ message: 'Report submitted successfully' });
-  } catch (error) {
-    console.error('Error submitting report:', error);
-    res.status(500).json({ error: 'Failed to submit report' });
-  }
-});
+// Route to get a specific report by ID
+router.get('/:id', authenticate, getReportById);
 
 module.exports = router;
+
 
 --- routes\reviewRoutes.js ---
 const express = require('express');
@@ -2247,6 +2348,12 @@ router.put('/:userId', authenticate, updateProfile);
 router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
 
 router.get('/:userId/block-status', authenticate, userController.checkBlockStatus);
+
+router.delete('/:userId/profile-pic', authenticate, userController.deleteProfilePicture);
+
+// Social links routes
+router.post('/:userId/social-links', authenticate, userController.addSocialLink);
+router.delete('/:userId/social-links/:index', authenticate, userController.deleteSocialLink);
 
 
 module.exports = router;
@@ -2541,7 +2648,7 @@ setupSocketIO(io);
 app.set('io', io);
 
 // CORS configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/']; // Add other origins if needed
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'https://smirki.github.io/', 'http://127.0.0.1:5500']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -2581,7 +2688,7 @@ app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/');
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'https://smirki.github.io/');
   res.header('Access-Control-Allow-Methods', 'GET');
   next();
 });

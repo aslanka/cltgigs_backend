@@ -124,7 +124,7 @@ function MyGigs() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-6 h-6 text-purple-600" />
-          <h3 className="font-semibold">Progress to Next Level</h3>
+          <h3 className="font-semibold">Progress to Next Level (feature coming soon!)</h3>
         </div>
         <span className="text-sm text-gray-500">{xpProgress}%</span>
       </div>

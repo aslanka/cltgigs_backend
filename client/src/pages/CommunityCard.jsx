@@ -4,28 +4,26 @@ import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { 
-  Star, Share2, Edit, Mail, Globe, Briefcase, Award, 
-  CheckCircle, MessageCircle, X, DownloadCloud, Sparkles, Link2, Plus,
-  Image as ImageIcon, Trash2, ExternalLink, User, Github, Linkedin, Twitter, Youtube
+  Star, Edit, Globe, Briefcase, CheckCircle, 
+  MessageCircle, X, Plus, Sparkles, Github, 
+  Linkedin, Twitter, Youtube 
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ProfilePicture from '../components/ProfilePicture';
-import SkillBadge from '../components/SkillBadge';
 import RatingChart from '../components/RatingChart';
 import Attachment from '../components/Attachment';
-
-const socialIcons = {
-  website: Globe,
-  github: Github,
-  linkedin: Linkedin,
-  twitter: Twitter,
-  youtube: Youtube
-};
-
-const MAX_BIO_LENGTH = 500;
-const MAX_PORTFOLIO_ITEMS = 12;
-const ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+import {
+  ProfileHeader,
+  SocialLinks,
+  BioSection,
+  PortfolioSection,
+  ReviewsSection,
+  socialIcons,
+  MAX_BIO_LENGTH,
+  MAX_PORTFOLIO_ITEMS,
+  ACCEPTED_FILE_TYPES,
+  MAX_FILE_SIZE
+} from '../components/community';
 
 const CommunityCard = () => {
   const { userId } = useParams();
@@ -155,15 +153,19 @@ const CommunityCard = () => {
 
   const handleDeletePortfolioItem = async (fileUrl) => {
     try {
-      await axios.delete(`/users/${userId}/portfolio`, { 
-        data: { fileUrl },
-        headers: { Authorization: `Bearer ${token}` }
+      await axios.delete(`/users/${userId}/portfolio`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { fileUrl }
       });
-      setProfile({ ...profile, portfolio: profile.portfolio.filter(item => item !== fileUrl) });
+      
+      setProfile(prev => ({
+        ...prev,
+        portfolio: prev.portfolio.filter(item => item !== fileUrl)
+      }));
+      
       toast.success('Portfolio item removed');
     } catch (err) {
-      console.error(err);
-      toast.error('Error removing item');
+      toast.error(err.response?.data?.error || 'Error removing item');
     }
   };
 
@@ -183,60 +185,40 @@ const CommunityCard = () => {
     }
   };
 
-  const handleSocialLinkUpdate = async (type, url) => {
-    if (!url.match(/^(http|https):\/\//)) {
-      toast.error('Please enter a valid URL starting with http:// or https://');
-      return;
-    }
-
-    try {
-      await axios.put(`/users/${userId}/social`, { [type]: url }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      toast.success('Social links updated');
-      setIsEditingLinks(false);
-      loadData();
-    } catch (err) {
-      toast.error('Error updating social links');
-    }
-  };
-
   const handleAddLink = async () => {
-    if (!newLink.url.match(/^(http|https):\/\//)) {
-      setError('Please enter a valid URL starting with http:// or https://');
-      return;
-    }
-    
     try {
-      await axios.post(`/users/${userId}/links`, newLink, {
+      const response = await axios.post(`/users/${userId}/social-links`, newLink, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       setProfile(prev => ({
         ...prev,
-        links: [...(prev.links || []), newLink]
+        social_media_links: [...prev.social_media_links, response.data]
       }));
+      
       setNewLink({ type: 'website', url: '' });
       toast.success('Link added successfully');
     } catch (err) {
-      toast.error('Error adding link');
+      toast.error(err.response?.data?.error || 'Error adding link');
     }
   };
 
   const handleDeleteLink = async (index) => {
     try {
-      await axios.delete(`/users/${userId}/links/${index}`, {
+      await axios.delete(`/users/${userId}/social-links/${index}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       setProfile(prev => ({
         ...prev,
-        links: prev.links.filter((_, i) => i !== index)
+        social_media_links: prev.social_media_links.filter((_, i) => i !== index)
       }));
+      
       toast.success('Link removed');
     } catch (err) {
-      toast.error('Error removing link');
+      toast.error(err.response?.data?.error || 'Error removing link');
     }
   };
-
   const handleContact = () => {
     if (!token) {
       navigate('/login');
@@ -270,326 +252,81 @@ const CommunityCard = () => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gray-50"
     >
-      {/* Profile Header */}
-      <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 h-48 sm:h-56">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            className="absolute -bottom-16 left-4 sm:left-8"
-            layoutId="profilePicture"
-          >
-            <ProfilePicture 
-              profilePicUrl={profile.profile_pic_url} 
-              name={profile.name}
-              className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl border-4 border-white shadow-xl"
-            />
-          </motion.div>
-        </div>
+      {/* Profile Header Section */}
+<div className="relative bg-gradient-to-r from-blue-600 to-purple-600 h-64 sm:h-72">
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <motion.div
+      className="absolute -bottom-20 left-1/2 transform -translate-x-1/2"
+      layoutId="profilePicture"
+    >
+      <div className="relative group">
+        <div className="absolute inset-0 bg-white/20 rounded-full filter blur-2xl animate-pulse"></div>
+        <ProfilePicture 
+          profilePicUrl={profile.profile_pic_url} 
+          name={profile.name}
+          className="w-48 h-48 sm:w-56 sm:h-56 rounded-full transform transition-transform duration-300 hover:scale-105"
+        />
       </div>
+    </motion.div>
+  </div>
+</div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <LayoutGroup>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Left Column */}
             <div className="lg:col-span-1 space-y-6">
-              <motion.div 
-                className="bg-white rounded-2xl p-6 shadow-xl"
-                layout
-              >
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-gray-900">{profile.name}</h2>
-                    {userData?.userId === userId && (
-                      <button 
-                        onClick={() => setIsEditing(!isEditing)}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <Edit className="w-5 h-5 text-gray-600" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <SkillBadge
-                      icon={<Briefcase className="w-4 h-4" />}
-                      label={`${profile.experience}+ years`}
-                    />
-                    <SkillBadge
-                      icon={<CheckCircle className="w-4 h-4 text-green-500" />}
-                      label={`${profile.completedGigs || 0} completed`}
-                      className="bg-green-50"
-                    />
-                    <SkillBadge
-                      icon={<Sparkles className="w-4 h-4 text-purple-500" />}
-                      label={`Level ${Math.floor(profile.xp / 1000)}`}
-                      className="bg-purple-50"
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Globe className="w-5 h-5 flex-shrink-0" />
-                      <span className="truncate">{profile.location || 'Remote'}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Briefcase className="w-5 h-5 flex-shrink-0" />
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={profile.experience}
-                          onChange={(e) => setProfile({...profile, experience: e.target.value})}
-                          className="w-full px-3 py-2 border rounded-lg"
-                          min="0"
-                        />
-                      ) : (
-                        <span>{profile.experience} years experience</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                className="bg-white rounded-2xl p-6 shadow-xl"
-                layout
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-lg">Social Links</h3>
-                  {userData?.userId === userId && (
-                    <button 
-                      onClick={() => setIsEditingLinks(!isEditingLinks)}
-                      className="p-1 hover:bg-gray-100 rounded-lg"
-                    >
-                      <Edit className="w-5 h-5 text-gray-600" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  {isEditingLinks ? (
-                    <>
-                      <div className="flex gap-2">
-                        <select
-                          value={newLink.type}
-                          onChange={(e) => setNewLink({...newLink, type: e.target.value})}
-                          className="flex-shrink-0 px-3 py-2 border rounded-lg"
-                        >
-                          {Object.keys(socialIcons).map((type) => (
-                            <option key={type} value={type}>{type}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="url"
-                          value={newLink.url}
-                          onChange={(e) => setNewLink({...newLink, url: e.target.value})}
-                          placeholder="Enter URL"
-                          className="w-full px-3 py-2 border rounded-lg"
-                        />
-                      </div>
-                      <button
-                        onClick={handleAddLink}
-                        disabled={isSubmitting}
-                        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        Add Link
-                      </button>
-                    </>
-                  ) : (
-                    profile.links?.map((link, index) => {
-                      const Icon = socialIcons[link.type] || Globe;
-                      return (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="flex items-center gap-3 group"
-                        >
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 w-full p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                          >
-                            <Icon className="w-5 h-5 text-gray-600 flex-shrink-0" />
-                            <span className="truncate text-gray-700">{link.url}</span>
-                          </a>
-                          {userData?.userId === userId && (
-                            <button
-                              onClick={() => handleDeleteLink(index)}
-                              className="opacity-0 group-hover:opacity-100 text-red-500 p-1 hover:bg-red-50 rounded-full"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
-                        </motion.div>
-                      )
-                    })
-                  )}
-                </div>
-              </motion.div>
+              <ProfileHeader
+                profile={profile}
+                isEditing={isEditing}
+                setIsEditing={setIsEditing}
+                userData={userData}
+                setProfile={setProfile}
+              />
+              
+              <SocialLinks
+                profile={profile}
+                isEditingLinks={isEditingLinks}
+                setIsEditingLinks={setIsEditingLinks}
+                userData={userData}
+                newLink={newLink}
+                setNewLink={setNewLink}
+                handleAddLink={handleAddLink}
+                handleDeleteLink={handleDeleteLink}
+                isSubmitting={isSubmitting}
+              />
             </div>
 
             {/* Main Content */}
             <div className="lg:col-span-3 space-y-6">
-              {/* Bio Section */}
-              <motion.div 
-                className="bg-white rounded-2xl p-6 shadow-xl"
-                layout
-              >
-                <h2 className="text-2xl font-bold mb-4">About</h2>
-                {isEditing ? (
-                  <div className="space-y-4">
-                    <textarea
-                      value={profile.bio}
-                      onChange={(e) => setProfile({...profile, bio: e.target.value})}
-                      className="w-full p-4 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      rows="4"
-                      placeholder="Tell us about yourself..."
-                      maxLength={MAX_BIO_LENGTH}
-                    />
-                    <div className="text-sm text-gray-500 text-right">
-                      {profile.bio?.length || 0}/{MAX_BIO_LENGTH}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">
-                    {profile.bio || 'No bio provided'}
-                  </p>
-                )}
-              </motion.div>
+              <BioSection
+                profile={profile}
+                isEditing={isEditing}
+                setProfile={setProfile}
+              />
 
-              {/* Portfolio Section */}
-              <motion.div 
-                className="bg-white rounded-2xl p-6 shadow-xl"
-                layout
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold">Portfolio</h2>
-                  {userData?.userId === userId && (
-                    <button
-                      onClick={() => setIsUploadingPortfolio(true)}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      disabled={profile.portfolio?.length >= MAX_PORTFOLIO_ITEMS}
-                    >
-                      <Plus className="w-6 h-6 text-gray-600" />
-                    </button>
-                  )}
-                </div>
+              <PortfolioSection
+                profile={profile}
+                userData={userData}
+                setIsUploadingPortfolio={setIsUploadingPortfolio}
+                handleDeletePortfolioItem={handleDeletePortfolioItem}
+              />
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {profile.portfolio?.map((item, index) => (
-                    <motion.div
-                      key={item}
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="relative group aspect-square"
-                    >
-                      <Attachment 
-                        fileUrl={item}
-                        className="w-full h-full object-cover rounded-xl shadow-sm hover:shadow-md transition-all"
-                      />
-                      {userData?.userId === userId && (
-                        <button
-                          onClick={() => handleDeletePortfolioItem(item)}
-                          className="absolute top-2 right-2 p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-sm hover:bg-white"
-                        >
-                          <X className="w-5 h-5 text-red-600" />
-                        </button>
-                      )}
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Reviews Section */}
-              <motion.div 
-                className="bg-white rounded-2xl p-6 shadow-xl"
-                layout
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold">Reviews</h2>
-                  <RatingChart reviews={reviews} />
-                </div>
-
-                <div className="space-y-6">
-                  {reviews.map((review) => (
-                    <motion.div
-                      key={review._id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-6 bg-gray-50 rounded-xl"
-                    >
-                      <div className="flex items-start gap-4">
-                        <ProfilePicture 
-                          profilePicUrl={review.reviewer_id?.profile_pic_url} 
-                          name={review.reviewer_id?.name}
-                          className="w-12 h-12 rounded-lg flex-shrink-0"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-medium">{review.reviewer_id?.name}</h4>
-                            <div className="flex items-center gap-1 text-yellow-400">
-                              {[...Array(review.rating)].map((_, i) => (
-                                <Star key={i} className="w-4 h-4 fill-current" />
-                              ))}
-                            </div>
-                          </div>
-                          <p className="text-gray-600">{review.comment}</p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {token && userData?.userId !== userId && !isBlocked && (
-                  <div className="mt-8 pt-6 border-t">
-                    <h3 className="text-xl font-bold mb-6">Write a Review</h3>
-                    <form onSubmit={handleReviewSubmit} className="space-y-4">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center space-x-1">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                              key={star}
-                              type="button"
-                              onMouseEnter={() => setHoveredRating(star)}
-                              onMouseLeave={() => setHoveredRating(0)}
-                              onClick={() => setNewReview({ ...newReview, rating: star })}
-                              className={`p-2 rounded-lg transition-colors ${
-                                (hoveredRating >= star || newReview.rating >= star) 
-                                  ? 'bg-blue-50 text-blue-600' 
-                                  : 'text-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              <Star className="w-6 h-6" />
-                            </button>
-                          ))}
-                        </div>
-                        <span className="text-gray-500">
-                          {newReview.rating > 0 ? `${newReview.rating} stars` : 'Select rating'}
-                        </span>
-                      </div>
-
-                      <textarea
-                        value={newReview.comment}
-                        onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
-                        placeholder="Share your experience..."
-                        className="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        rows="4"
-                        required
-                      />
-
-                      {error && <p className="text-red-500 text-sm">{error}</p>}
-
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
-                      >
-                        {isSubmitting ? 'Submitting...' : 'Submit Review'}
-                      </button>
-                    </form>
-                  </div>
-                )}
-              </motion.div>
+              <ReviewsSection
+                reviews={reviews}
+                newReview={newReview}
+                setNewReview={setNewReview}
+                hoveredRating={hoveredRating}
+                setHoveredRating={setHoveredRating}
+                error={error}
+                isSubmitting={isSubmitting}
+                handleReviewSubmit={handleReviewSubmit}
+                token={token}
+                userData={userData}
+                isBlocked={isBlocked}
+                userId={userId}
+                averageRating={averageRating}
+              />
             </div>
           </div>
         </LayoutGroup>

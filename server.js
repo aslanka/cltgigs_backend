@@ -41,7 +41,7 @@ setupSocketIO(io);
 app.set('io', io);
 
 // CORS configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'http://127.0.0.1:5500']; // Add other origins if needed
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'https://smirki.github.io/', 'http://127.0.0.1:5500']; // Add other origins if needed
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -81,7 +81,7 @@ app.use(passport.initialize());
 
 // Static folder for uploaded images
 app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/');
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173', 'https://cltgigs.golockedin.com', 'https://cltgigsbackend.golockedin.com/', 'https://smirki.github.io/');
   res.header('Access-Control-Allow-Methods', 'GET');
   next();
 });

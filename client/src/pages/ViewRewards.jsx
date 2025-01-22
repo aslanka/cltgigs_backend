@@ -178,7 +178,7 @@ const ViewRewards = () => {
                 loading="lazy"
               />
               <div>
-                <h1 className="text-4xl font-bold">Rewards Center</h1>
+                <h1 className="text-4xl font-bold">Rewards Center - Coming Soon</h1>
                 <p className="text-lg opacity-90">Earn XP • Unlock Rewards • Boost Your Profile</p>
               </div>
             </div>
