@@ -461,6 +461,7 @@ exports.getAllGigs = async (req, res) => {
       minBudget,
       maxBudget,
       isVolunteer,
+      serviceOffered,
       tags,
     } = req.query;
 
@@ -474,6 +475,10 @@ exports.getAllGigs = async (req, res) => {
     // Filter by category
     if (category && category !== 'All') {
       filter.category = category;
+    }
+
+    if (serviceOffered !== undefined) {
+      filter.service_offered = serviceOffered === 'true';
     }
 
     // Filter by tags (array of strings)
@@ -1314,6 +1319,7 @@ exports.deleteReview = async (req, res) => {
 
 --- controllers\userController.js ---
 const User = require('../models/User');
+const { resizeImage } = require('../middlewares/upload');
 
 // Get public profile by userId
 exports.getPublicProfile = async (req, res) => {
@@ -1361,12 +1367,35 @@ exports.uploadCertifications = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
-    const updatedData = req.body;
+    const {
+      name,
+      bio,
+      location,
+      experience,
+      socialLinks,
+      tagline,
+      skills
+    } = req.body;
 
-    // Exclude fields that should not be updated directly
-    delete updatedData.name; 
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
 
-    const user = await User.findByIdAndUpdate(userId, updatedData, { new: true });
+    const updateData = {
+      name,
+      bio,
+      location,
+      experience: Math.max(0, parseInt(experience)) || 0,
+      tagline,
+      skills: Array.isArray(skills) ? skills : [],
+      social_media_links: this.validateSocialLinks(socialLinks)
+    };
+
+    const user = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+      runValidators: true
+    }).select('-password');
+
     res.json(user);
   } catch (err) {
     console.error(err);
@@ -1377,13 +1406,21 @@ exports.updateProfile = async (req, res) => {
 exports.uploadPortfolio = async (req, res) => {
   try {
     const { userId } = req.params;
-    const files = req.files;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
 
-    const fileUrls = files.map((file) => `/uploads/${file.filename}`);
+    const processedFiles = await Promise.all(
+      req.files.map(async (file) => {
+        await resizeImage(file.path, 1200, 800);
+        return `/uploads/${file.filename}`;
+      })
+    );
+
     const user = await User.findByIdAndUpdate(
       userId,
-      { $push: { portfolio: { $each: fileUrls } } },
-      { new: true }
+      { $push: { portfolio: { $each: processedFiles } } },
+      { new: true, select: '-password' }
     );
 
     res.json(user);
@@ -1397,11 +1434,19 @@ exports.removePortfolioItem = async (req, res) => {
   try {
     const { userId } = req.params;
     const { fileUrl } = req.body;
+
+    // Delete physical file
+    const filePath = path.join(__dirname, '..', fileUrl);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
       { $pull: { portfolio: fileUrl } },
-      { new: true }
+      { new: true, select: '-password' }
     );
+
     res.json(user);
   } catch (err) {
     console.error(err);
@@ -1409,6 +1454,36 @@ exports.removePortfolioItem = async (req, res) => {
   }
 };
 
+exports.validateSocialLinks = (links) => {
+  if (!Array.isArray(links)) return [];
+  const validEntries = [];
+  const allowedDomains = {
+    github: 'github.com',
+    linkedin: 'linkedin.com',
+    twitter: 'twitter.com',
+    website: ''
+  };
+
+  links.forEach(link => {
+    if (typeof link === 'object' && link.type && link.url) {
+      try {
+        const urlObj = new URL(link.url);
+        if (allowedDomains[link.type] && 
+          (link.type === 'website' || urlObj.hostname.endsWith(allowedDomains[link.type]))
+        ) {
+          validEntries.push({
+            type: link.type,
+            url: link.url
+          });
+        }
+      } catch (e) {
+        // Invalid URL
+      }
+    }
+  });
+
+  return validEntries;
+};
 
 --- middlewares\auth.js ---
 const jwt = require('jsonwebtoken');
@@ -1431,6 +1506,12 @@ exports.authenticate = (req, res, next) => {
   }
 };
 
+exports.authorizeProfileUpdate = (req, res, next) => {
+  if (req.params.userId !== req.user.userId) {
+    return res.status(403).json({ error: 'Unauthorized profile access' });
+  }
+  next();
+};
 
 --- middlewares\upload.js ---
 const multer = require('multer');
@@ -1611,6 +1692,7 @@ const gigSchema = new mongoose.Schema({
   gig_tasks: { type: [String], default: [] }, // Array of tasks
   budget_range_min: { type: Number }, // Required if not volunteer
   budget_range_max: { type: Number }, // Required if not volunteer
+  service_offered: { type: Boolean, default: false },
   calculated_average_budget: { 
     type: Number,
     default: null,
@@ -1737,7 +1819,35 @@ const userSchema = new mongoose.Schema({
   specializations: { type: [String], default: [] }, // Tags
   certifications: { type: [String], default: [] }, // File URLs
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  experience: { type: Number, default: 0 },
+  experience: { type: Number, min: 0, default: 0 },
+  portfolio: [{
+    type: String,
+    validate: {
+      validator: v => /^\/uploads\/[a-zA-Z0-9_-]+\.(jpg|jpeg|png|gif|webp)$/.test(v),
+      message: 'Invalid portfolio file path'
+    }
+  }],
+  social_media_links: [{
+    type: {
+      type: String,
+      enum: ['github', 'linkedin', 'twitter', 'website']
+    },
+    url: {
+      type: String,
+      validate: {
+        validator: v => {
+          try {
+            new URL(v);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+        message: 'Invalid URL format'
+      }
+    }
+  }],
+  skills: [{ type: String, maxlength: 50 }],
 
   // Availability
   working_hours: { type: String },
@@ -1859,6 +1969,7 @@ const generateToken = (user) => {
     { expiresIn: '1d' }
   );
 };
+
 
 
 router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));

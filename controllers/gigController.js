@@ -17,6 +17,7 @@ exports.getAllGigs = async (req, res) => {
       minBudget,
       maxBudget,
       isVolunteer,
+      serviceOffered,
       tags,
     } = req.query;
 
@@ -30,6 +31,10 @@ exports.getAllGigs = async (req, res) => {
     // Filter by category
     if (category && category !== 'All') {
       filter.category = category;
+    }
+
+    if (serviceOffered !== undefined) {
+      filter.service_offered = serviceOffered === 'true';
     }
 
     // Filter by tags (array of strings)
@@ -176,6 +181,7 @@ exports.createGig = async (req, res) => {
       budget_range_min,
       budget_range_max,
       is_volunteer: isVolunteerString,
+      service_offered: serviceOfferedString, // Add this line
       tags,
     } = req.body;
 
@@ -183,6 +189,7 @@ exports.createGig = async (req, res) => {
 
     // Convert string boolean to actual boolean
     const is_volunteer = isVolunteerString === 'true';
+    const service_offered = serviceOfferedString === 'true'; // Add this line
 
     // Parse gig tasks from JSON string
     let gig_tasks = [];
@@ -222,6 +229,7 @@ exports.createGig = async (req, res) => {
       description,
       category,
       zipcode,
+      service_offered, // Add this line
       start_date: start_date || null,
       completion_date: completion_date || null,
       team_size: team_size || 1,

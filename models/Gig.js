@@ -13,6 +13,7 @@ const gigSchema = new mongoose.Schema({
   gig_tasks: { type: [String], default: [] }, // Array of tasks
   budget_range_min: { type: Number }, // Required if not volunteer
   budget_range_max: { type: Number }, // Required if not volunteer
+  service_offered: { type: Boolean, default: false },
   calculated_average_budget: { 
     type: Number,
     default: null,

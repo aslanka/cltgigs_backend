@@ -18,6 +18,7 @@ const generateToken = (user) => {
 };
 
 
+
 router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
 
 router.get(

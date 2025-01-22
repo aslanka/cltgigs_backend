@@ -3,7 +3,7 @@ import axios from '../api/axiosInstance';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import DOMPurify from 'dompurify';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import ProfilePicture from '../components/ProfilePicture';
 import {
   Tag,
@@ -18,8 +18,6 @@ import {
   Edit,
   Award,
   Shield,
-  BadgeCheck,
-  Clock,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -43,38 +41,17 @@ function GigDetails() {
 
   // Time formatting utilities
   const formatPostedTime = (dateString) => {
-    const createdDate = new Date(dateString);
-    const currentDate = new Date();
-    const diffTime = Math.abs(currentDate - createdDate); // Difference in milliseconds
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Round down to nearest day
-  
-    if (diffDays === 0) {
-      return 'Posted Today';
-    } else {
-      return `Posted ${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
-    }
+    const diffDays = Math.floor((new Date() - new Date(dateString)) / (1000 * 60 * 60 * 24));
+    return diffDays === 0 ? 'Posted Today' : `Posted ${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
   };
 
-  // Update the formatMemberSince function in GigDetails.jsx
-const formatMemberSince = (dateString) => {
-  // Add null/undefined check and date validation
-  if (!dateString) return 'Member since unknown date';
-  
-  const joinDate = new Date(dateString);
-  
-  // Check if date is valid
-  if (isNaN(joinDate.getTime())) {
-    return 'Member since unknown date';
-  }
-
-  return `Member since ${new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'long',
-  }).format(joinDate)}`;
-};
-
-// Then in the JSX, add optional chaining for user data:
-formatMemberSince(gig?.user_id?.createdAt)
+  const formatMemberSince = (dateString) => {
+    if (!dateString) return 'Member since unknown date';
+    const joinDate = new Date(dateString);
+    return isNaN(joinDate.getTime()) 
+      ? 'Member since unknown date'
+      : `Member since ${joinDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`;
+  };
 
   // Bookmark functionality
   const handleBookmark = async () => {
@@ -83,11 +60,8 @@ formatMemberSince(gig?.user_id?.createdAt)
       return;
     }
     try {
-      if (isBookmarked) {
-        await axios.delete(`/bookmarks/${gigId}`);
-      } else {
-        await axios.post(`/bookmarks`, { gigId });
-      }
+      const method = isBookmarked ? 'delete' : 'post';
+      await axios[method](`/bookmarks${isBookmarked ? `/${gigId}` : ''}`, { gigId });
       setIsBookmarked(!isBookmarked);
     } catch (err) {
       console.error('Bookmark error:', err);
@@ -107,7 +81,12 @@ formatMemberSince(gig?.user_id?.createdAt)
         setGig(gigRes.data.gig);
         setAttachments(gigRes.data.attachments);
         setIsBookmarked(bookmarksRes.data.isBookmarked);
-        await fetchBids();
+
+        // Only fetch bids if logged in
+        if (token) {
+          const bidsRes = await axios.get(`/bids/${gigId}`);
+          setBids(bidsRes.data);
+        }
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load gig details');
       } finally {
@@ -115,51 +94,40 @@ formatMemberSince(gig?.user_id?.createdAt)
       }
     };
 
-    const fetchBids = async () => {
-      try {
-        const bidsRes = await axios.get(`/bids/${gigId}`);
-        setBids(bidsRes.data);
-      } catch (err) {
-        setError('Failed to load bids');
-      }
-    };
-
     fetchGigData();
   }, [gigId, token]);
 
-  // Bid handling with login interception
+  // Bid handling
   const handlePlaceBid = async (e) => {
     e.preventDefault();
     if (!token) {
       navigate('/login', { state: { from: `/gigs/${gigId}`, formData: { bidAmount, bidMessage } } });
       return;
     }
-  
+
     if (!bidAmount || isNaN(bidAmount)) {
       setError('Please enter a valid bid amount');
       return;
     }
-  
+
     setIsPlacingBid(true);
     try {
       const res = await axios.post('/bids', {
-        gig_id: gigId, // Correct parameter name
+        gig_id: gigId,
         amount: parseFloat(bidAmount),
         message: bidMessage
       });
-  
-      // Create a bid object with the current user's information
-      const newBid = {
+
+      setBids(prev => [...prev, {
         ...res.data.newBid,
-        user_id: {  // Mock the populated user object
+        user_id: {
           _id: userData.userId,
           name: userData.name,
           profile_pic_url: userData.profilePicUrl,
           rating: userData.rating
         }
-      };
-  
-      setBids(prevBids => [...prevBids, newBid]);
+      }]);
+      
       setBidAmount('');
       setBidMessage('');
       setError(null);
@@ -177,10 +145,7 @@ formatMemberSince(gig?.user_id?.createdAt)
       return;
     }
     try {
-      const res = await axios.post('/conversations', {
-        recipientId: gig.user_id._id,
-        gigId,
-      });
+      const res = await axios.post('/conversations', { recipientId: gig.user_id._id, gigId });
       navigate(`/messages/${res.data.conversationId}`);
     } catch (err) {
       setError('Failed to start conversation');
@@ -192,7 +157,7 @@ formatMemberSince(gig?.user_id?.createdAt)
     return [...Array(5)].map((_, i) => (
       <Star
         key={i}
-        className={`w-5 h-5 ${i < Math.floor(rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+        className={`w-5 h-5 ${i < Math.floor(rating ?? 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
       />
     ));
   };
@@ -219,15 +184,10 @@ formatMemberSince(gig?.user_id?.createdAt)
     );
   }
 
-  if (!gig) {
-    return <div className="text-center p-8">Gig not found</div>;
-  }
+  if (!gig) return <div className="text-center p-8">Gig not found</div>;
 
   const isOwner = userData?.userId === gig?.user_id?._id;
-  const userBid = bids.find(bid => {
-    const bidUserId = bid.user_id?._id || bid.user_id;
-    return bidUserId === userData?.userId;
-  });
+  const userBid = token ? bids.find(bid => bid.user_id?._id === userData?.userId) : null;
 
   return (
     <motion.main
@@ -287,7 +247,7 @@ formatMemberSince(gig?.user_id?.createdAt)
             {attachments.length > 0 && (
               <div className="relative group rounded-xl overflow-hidden">
                 <img
-                crossorigin="anonymous"
+                  crossOrigin="anonymous"
                   src={`${import.meta.env.VITE_SERVER}/${attachments[currentImageIndex].file_url}`}
                   alt={gig.title}
                   className="w-full h-96 object-cover rounded-xl transition-transform duration-300 group-hover:scale-105"
@@ -295,13 +255,13 @@ formatMemberSince(gig?.user_id?.createdAt)
                 {attachments.length > 1 && (
                   <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => setCurrentImageIndex((prev) => (prev - 1 + attachments.length) % attachments.length)}
+                      onClick={() => setCurrentImageIndex(prev => (prev - 1 + attachments.length) % attachments.length)}
                       className="p-2 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
                     >
                       <ChevronLeft className="w-6 h-6" />
                     </button>
                     <button
-                      onClick={() => setCurrentImageIndex((prev) => (prev + 1) % attachments.length)}
+                      onClick={() => setCurrentImageIndex(prev => (prev + 1) % attachments.length)}
                       className="p-2 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
                     >
                       <ChevronRight className="w-6 h-6" />
@@ -314,7 +274,6 @@ formatMemberSince(gig?.user_id?.createdAt)
 
           {/* Gig Details Sections */}
           <div className="space-y-8">
-            {/* Description */}
             <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Tag className="w-5 h-5 text-blue-600" />
@@ -326,7 +285,6 @@ formatMemberSince(gig?.user_id?.createdAt)
               />
             </section>
 
-            {/* Details Grid */}
             <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-2">
                 <Users className="w-5 h-5 text-purple-600" />
@@ -334,7 +292,7 @@ formatMemberSince(gig?.user_id?.createdAt)
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <DollarSign className="w-6 h-6 text-green-600 flex-shrink-0" />
+                  <DollarSign className="w-6 h-6 text-green-600" />
                   <div>
                     <p className="text-sm text-gray-500">Budget Range</p>
                     <p className="font-medium">
@@ -343,21 +301,21 @@ formatMemberSince(gig?.user_id?.createdAt)
                   </div>
                 </div>
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <MapPin className="w-6 h-6 text-red-600 flex-shrink-0" />
+                  <MapPin className="w-6 h-6 text-red-600" />
                   <div>
                     <p className="text-sm text-gray-500">Location</p>
                     <p className="font-medium">{gig.zipcode}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <Users className="w-6 h-6 text-purple-600 flex-shrink-0" />
+                  <Users className="w-6 h-6 text-purple-600" />
                   <div>
                     <p className="text-sm text-gray-500">Team Size</p>
                     <p className="font-medium">{gig.team_size} people</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <Shield className="w-6 h-6 text-blue-600 flex-shrink-0" />
+                  <Shield className="w-6 h-6 text-blue-600" />
                   <div>
                     <p className="text-sm text-gray-500">Safety Status</p>
                     <p className="font-medium">Verified & Protected</p>
@@ -366,7 +324,6 @@ formatMemberSince(gig?.user_id?.createdAt)
               </div>
             </section>
 
-            {/* Tasks/Requirements */}
             {gig.gig_tasks.length > 0 && (
               <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -376,7 +333,7 @@ formatMemberSince(gig?.user_id?.createdAt)
                 <div className="space-y-3">
                   {gig.gig_tasks.slice(0, showAllTasks ? undefined : 3).map((task, index) => (
                     <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                      <Check className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <Check className="w-5 h-5 text-green-500 mt-0.5" />
                       <p className="text-gray-700">{task}</p>
                     </div>
                   ))}
@@ -397,58 +354,80 @@ formatMemberSince(gig?.user_id?.createdAt)
         {/* Sidebar */}
         <div className="lg:col-span-1">
           <div className="sticky top-8 space-y-6">
-            {/* Bid Section */}
             {!isOwner && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          {userBid ? (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-gray-900">Your Bid</h2>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">Bid Amount</p>
-                <p className="text-lg font-semibold text-gray-900">${userBid.amount}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">Your Message</p>
-                <p className="text-gray-700 whitespace-pre-wrap">{userBid.message || 'No message provided'}</p>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handlePlaceBid} className="space-y-4">
-                    <h2 className="text-xl font-semibold text-gray-900">Place Your Bid</h2>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount ($)</label>
-                      <input
-                        type="number"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        value={bidAmount}
-                        onChange={(e) => setBidAmount(e.target.value)}
-                        required
-                        min="1"
-                        step="0.01"
-                      />
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                {token ? (
+                  userBid ? (
+                    <div className="space-y-4">
+                      <h2 className="text-xl font-semibold text-gray-900">Your Bid</h2>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Bid Amount</p>
+                        <p className="text-lg font-semibold text-gray-900">${userBid.amount}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Your Message</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">{userBid.message || 'No message provided'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Message to Poster</label>
-                      <textarea
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-32"
-                        value={bidMessage}
-                        onChange={(e) => setBidMessage(e.target.value)}
-                        placeholder="Explain why you're the best choice..."
-                      />
+                  ) : (
+                    <form onSubmit={handlePlaceBid} className="space-y-4">
+                      <h2 className="text-xl font-semibold text-gray-900">Place Your Bid</h2>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount ($)</label>
+                        <input
+                          type="number"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                          required
+                          min="1"
+                          step="0.01"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Message to Poster</label>
+                        <textarea
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-32"
+                          value={bidMessage}
+                          onChange={(e) => setBidMessage(e.target.value)}
+                          placeholder="Explain why you're the best choice..."
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isPlacingBid}
+                        className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {isPlacingBid ? 'Submitting Bid...' : 'Submit Bid'}
+                      </button>
+                    </form>
+                  )
+                ) : (
+                  <div className="text-center space-y-4">
+                    <h3 className="text-xl font-semibold">Want to bid on this gig?</h3>
+                    <p className="text-gray-600">Join our community to submit your proposal and connect with clients.</p>
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => navigate('/login', { state: { from: `/gigs/${gigId}` } })}
+                        className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+                      >
+                        Login to Bid
+                      </button>
+                      <div className="text-sm text-gray-500">
+                        Not a member yet?{' '}
+                        <button
+                          onClick={() => navigate('/register', { state: { from: `/gigs/${gigId}` } })}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Sign up free
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="submit"
-                      disabled={isPlacingBid}
-                      className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                      {isPlacingBid ? 'Submitting Bid...' : 'Submit Bid'}
-                    </button>
-                  </form>
+                  </div>
                 )}
               </div>
             )}
 
-            {/* User Profile Card */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4">
               <div className="flex items-center gap-4">
                 <ProfilePicture
@@ -460,7 +439,7 @@ formatMemberSince(gig?.user_id?.createdAt)
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">{gig.user_id.name}</h3>
                   <div className="flex items-center gap-2">
-                    {renderRatingStars(gig.user_id.rating || 0)}
+                    {renderRatingStars(gig.user_id.rating)}
                     <span className="text-sm text-gray-500">({gig.user_id.reviews?.length || 0} reviews)</span>
                   </div>
                 </div>
@@ -480,11 +459,11 @@ formatMemberSince(gig?.user_id?.createdAt)
               </div>
 
               <button
-                onClick={startConversation}
+                onClick={() => token ? startConversation() : navigate('/login', { state: { from: `/gigs/${gigId}` } })}
                 className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
               >
                 <MessageCircle className="w-5 h-5" />
-                Contact User
+                {token ? 'Contact User' : 'Login to Contact'}
               </button>
             </div>
           </div>

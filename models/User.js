@@ -18,7 +18,35 @@ const userSchema = new mongoose.Schema({
   specializations: { type: [String], default: [] }, // Tags
   certifications: { type: [String], default: [] }, // File URLs
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  experience: { type: Number, default: 0 },
+  experience: { type: Number, min: 0, default: 0 },
+  portfolio: [{
+    type: String,
+    validate: {
+      validator: v => /^\/uploads\/[a-zA-Z0-9_-]+\.(jpg|jpeg|png|gif|webp)$/.test(v),
+      message: 'Invalid portfolio file path'
+    }
+  }],
+  social_media_links: [{
+    type: {
+      type: String,
+      enum: ['github', 'linkedin', 'twitter', 'website']
+    },
+    url: {
+      type: String,
+      validate: {
+        validator: v => {
+          try {
+            new URL(v);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+        message: 'Invalid URL format'
+      }
+    }
+  }],
+  skills: [{ type: String, maxlength: 50 }],
 
   // Availability
   working_hours: { type: String },
