@@ -11,7 +11,7 @@ function setupSocketIO(io) {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('No token provided'));
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.userId;
       return next();
     } catch (err) {

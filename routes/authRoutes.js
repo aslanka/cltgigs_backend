@@ -12,8 +12,8 @@ router.post('/login', loginUser);
 const generateToken = (user) => {
   return jwt.sign(
     { userId: user._id, email: user.email },
-    process.env.JWT_SECRET || 'supersecretkey',
-    { expiresIn: '1d' }
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN }
   );
 };
 
