@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f9;
+    }
+    header {
+      background-color: #4CAF50;
+      color: white;
+      text-align: center;
+      padding: 1rem 0;
+    }
+    .container {
+      margin: 2rem auto;
+      max-width: 900px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+    .controls {
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #f9f9f9;
+      border-bottom: 1px solid #ddd;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table thead {
+      background-color: #4CAF50;
+      color: white;
+    }
+    table th, table td {
+      padding: 0.8rem;
+      text-align: left;
+      border: 1px solid #ddd;
+    }
+    table tbody tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    .loading {
+      text-align: center;
+      padding: 2rem;
+    }
+    .filter {
+      margin-right: 1rem;
+    }
+    .button {
+      padding: 0.5rem 1rem;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Reports Dashboard</h1>
+  </header>
+  <div class="container">
+    <div class="controls">
+      <div>
+        <select id="filterReason" class="filter">
+          <option value="">Filter by Reason</option>
+          <option value="Spam">Spam</option>
+          <option value="Harassment">Harassment</option>
+          <option value="Fake Account">Fake Account</option>
+          <option value="Inappropriate Content">Inappropriate Content</option>
+          <option value="Copyright Infringement">Copyright Infringement</option>
+        </select>
+        <select id="sortBy" class="filter">
+          <option value="newest">Sort by Newest</option>
+          <option value="oldest">Sort by Oldest</option>
+        </select>
+      </div>
+      <button id="deleteSelected" class="button">Delete Selected</button>
+    </div>
+    <div id="loading" class="loading">Loading reports...</div>
+    <table id="reportTable" style="display: none;">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll"></th>
+          <th>#</th>
+          <th>Reporter</th>
+          <th>Creator</th>
+          <th>Reason</th>
+          <th>Details</th>
+          <th>Content Type</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const apiUrl = 'http://localhost:4000/api/reports'; // Update with your backend URL
+      const loadingElement = document.getElementById('loading');
+      const tableElement = document.getElementById('reportTable');
+      const tableBody = tableElement.querySelector('tbody');
+      const filterReason = document.getElementById('filterReason');
+      const sortBy = document.getElementById('sortBy');
+      const deleteSelectedButton = document.getElementById('deleteSelected');
+      const selectAllCheckbox = document.getElementById('selectAll');
+
+      let reports = [];
+
+      async function fetchReports() {
+        loadingElement.style.display = 'block';
+        tableElement.style.display = 'none';
+        try {
+          const response = await fetch(apiUrl, {
+            headers: {
+              'Authorization': 'Bearer YOUR_TOKEN_HERE' // Replace with a valid token if needed
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch reports');
+          }
+
+          reports = await response.json();
+          renderReports();
+        } catch (error) {
+          loadingElement.textContent = 'Error loading reports: ' + error.message;
+        } finally {
+          loadingElement.style.display = 'none';
+        }
+      }
+
+      function renderReports() {
+        tableBody.innerHTML = '';
+
+        let filteredReports = [...reports];
+
+        // Filter by reason
+        const reasonFilter = filterReason.value;
+        if (reasonFilter) {
+          filteredReports = filteredReports.filter(report => report.reportReason === reasonFilter);
+        }
+
+        // Sort by date
+        const sortOrder = sortBy.value;
+        filteredReports.sort((a, b) => {
+          const dateA = new Date(a.timestamp);
+          const dateB = new Date(b.timestamp);
+          return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+
+        filteredReports.forEach((report, index) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><input type="checkbox" class="selectRow" data-id="${report._id}"></td>
+            <td>${index + 1}</td>
+            <td>${report.reporterId ? report.reporterId.name : 'N/A'}</td>
+            <td>${report.creatorId ? report.creatorId.name : 'N/A'}</td>
+            <td>${report.reportReason}</td>
+            <td>${report.reportDetails}</td>
+            <td>${report.contentType}</td>
+            <td>${new Date(report.timestamp).toLocaleString()}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+
+        tableElement.style.display = 'table';
+      }
+
+      filterReason.addEventListener('change', renderReports);
+      sortBy.addEventListener('change', renderReports);
+
+      deleteSelectedButton.addEventListener('click', async () => {
+        const selectedCheckboxes = document.querySelectorAll('.selectRow:checked');
+        const idsToDelete = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
+
+        if (idsToDelete.length === 0) {
+          alert('No reports selected for deletion.');
+          return;
+        }
+
+        if (!confirm('Are you sure you want to delete the selected reports?')) {
+          return;
+        }
+
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer YOUR_TOKEN_HERE'
+            },
+            body: JSON.stringify({ ids: idsToDelete })
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to delete reports');
+          }
+
+          reports = reports.filter(report => !idsToDelete.includes(report._id));
+          renderReports();
+        } catch (error) {
+          alert('Error deleting reports: ' + error.message);
+        }
+      });
+
+      selectAllCheckbox.addEventListener('change', () => {
+        const checkboxes = document.querySelectorAll('.selectRow');
+        checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+      });
+
+      await fetchReports();
+    });
+  </script>
+</body>
+</html>

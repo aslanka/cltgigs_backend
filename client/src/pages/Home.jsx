@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { Search, MapPin, Flag, Filter, ClipboardList, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Star, Award, Rocket } from 'lucide-react';
 import Mascot from '../assets/mascot.svg';
+import ReportButton from '../components/ReportButton';
 
 // Skeleton Loading Component
 const SkeletonCard = () => (
@@ -46,6 +47,7 @@ const Home = () => {
   const [page, setPage] = useState(1);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedContent, setSelectedContent] = useState(null);
 
   const limit = 10;
   const { token } = useContext(AuthContext);
@@ -84,6 +86,19 @@ const Home = () => {
       console.error(err);
     }
     setIsLoading(false);
+  };
+
+  const openReportModal = (gig) => {
+    setSelectedContent({
+      contentId: gig._id,
+      contentType: "gig", // Define the type of content being reported
+      creatorId: gig.user_id,
+       // ID of the user who created the gig
+    });
+  };
+
+  const closeReportModal = () => {
+    setSelectedContent(null);
   };
 
   const handleZipSearch = () => {
@@ -313,6 +328,9 @@ const Home = () => {
                   e.preventDefault();
                   e.stopPropagation();
                   // Handle report logic here
+                  console.log('clicked')
+                  openReportModal(gig);
+                  
                 }}
               >
                 <Flag className="w-5 h-5" />
@@ -410,10 +428,20 @@ const Home = () => {
             </Link>
           </motion.div>
         );
+    
       })
     )}
   </AnimatePresence>
 </div>
+
+{selectedContent && (
+          <ReportButton
+            contentId={selectedContent.contentId}
+            contentType={selectedContent.contentType}
+            creatorId={selectedContent.creatorId}
+            onClose={closeReportModal} // Pass a function to close the modal
+          />
+        )}
 
         {/* Pagination */}
         <div className="flex justify-center items-center space-x-4 mt-12">
