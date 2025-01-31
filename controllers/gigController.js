@@ -1,8 +1,10 @@
 const Gig = require('../models/Gig');
 const Bid = require('../models/Bid');
 const Attachment = require('../models/Attachment');
-const { resizeImage } = require('../middlewares/upload');
+const { processImage } = require('../middlewares/upload');
 const { findZipcodesWithinWithDistance } = require('../services/zipcodeService');
+const fs = require('fs').promises;
+const sanitize = require('mongo-sanitize');
 
 exports.getAllGigs = async (req, res) => {
   try {
@@ -247,11 +249,20 @@ exports.createGig = async (req, res) => {
     // Handle attachment if file is uploaded
     if (req.file) {
       try {
-        await resizeImage(req.file.path);
+        const isImage = req.file.mimetype.startsWith('image/');
+        if (isImage) {
+          await processImage(req.file.path);
+        }
+
+        const stats = await fs.stat(req.file.path);
+        
         await Attachment.create({
           type: 'gig',
           foreign_key_id: gig._id,
-          file_url: req.file.path,
+          file_url: `/uploads/${req.file.filename}`,
+          uploaded_by: userId,
+          mime_type: isImage ? 'image/webp' : req.file.mimetype,
+          file_size: stats.size
         });
       } catch (error) {
         console.error('Error handling attachment:', error);
@@ -348,12 +359,27 @@ exports.updateGig = async (req, res) => {
 
     // Handle file upload
     if (req.file) {
-      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
-      await Attachment.create({
-        type: 'gig',
-        foreign_key_id: gigId,
-        file_url: req.file.path
-      });
+      try {
+        const isImage = req.file.mimetype.startsWith('image/');
+        if (isImage) {
+          await processImage(req.file.path);
+        }
+
+        const stats = await fs.stat(req.file.path);
+
+        await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+        await Attachment.create({
+          type: 'gig',
+          foreign_key_id: gigId,
+          file_url: `/uploads/${req.file.filename}`,
+          uploaded_by: req.user._id,
+          mime_type: isImage ? 'image/webp' : req.file.mimetype,
+          file_size: stats.size
+        });
+      } catch (error) {
+        console.error('Error handling attachment:', error);
+        return res.status(500).json({ error: 'Failed to process attachment' });
+      }
     }
 
     const updatedGig = await gig.save();

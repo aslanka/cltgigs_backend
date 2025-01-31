@@ -28,13 +28,23 @@ function Settings() {
     twoFactor: false
   });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
-  const [progress, setProgress] = useState(75); // Example profile completeness
+  const [progress, setProgress] = useState(75);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
 
   useEffect(() => {
     if (userData) fetchProfile();
   }, [userData]);
+
+  // Cleanup object URLs
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const fetchProfile = async () => {
     try {
@@ -65,29 +75,67 @@ function Settings() {
     setIsSaving(false);
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setUploadError(null);
+    
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setUploadError('Only JPG, PNG, and WebP images are allowed');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError('File size must be less than 2MB');
+      return;
+    }
+
+    // Generate preview
+    setPreviewUrl(URL.createObjectURL(file));
+    setSelectedFile(file);
+  };
+
   const handleUploadProfilePic = async () => {
     if (!selectedFile) return;
+    
     try {
+      setIsUploading(true);
+      setUploadError(null);
+  
       const formData = new FormData();
       formData.append("type", "profile");
       formData.append("foreign_key_id", userData.userId);
       formData.append("file", selectedFile);
 
-      const res = await axios.post("/attachments", formData);
-      const attachmentRes = await axios.get(`/attachments/${res.data.attachmentId}`);
-      const profilePicUrl = attachmentRes.data.attachment.file_url;
+      // Upload the file
+      const { data } = await axios.post("/attachments", formData);
+      
 
-      await axios.put(`/users/${userData.userId}`, { profile_pic_url: profilePicUrl });
+      // Update user profile with new URL
+      await axios.put(`/users/${userData.userId}`, { 
+        profile_pic_url: data.file_url 
+      });
+    
+      // Force refresh in Navbar
+      if (window.navbarRef) {
+        window.navbarRef.setRefreshKey(Date.now());
+      }
+      
       fetchProfile();
+      setSelectedFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith("image/")) {
-      setSelectedFile(file);
+      console.error("Upload failed:", err);
+      setUploadError(
+        err.response?.data?.error || "Failed to upload profile picture. Please try again."
+      );
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -157,7 +205,12 @@ function Settings() {
                 <div className="relative group">
                   <img
                     crossOrigin="anonymous"
-                    src={profile.profile_pic_url || "/default-avatar.png"}
+                    src={
+                      previewUrl || 
+                      (profile.profile_pic_url 
+                        ? `${import.meta.env.VITE_SERVER}${profile.profile_pic_url}`
+                        : "/default-avatar.png")
+                    }
                     alt="Profile"
                     className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
                   />
@@ -167,25 +220,34 @@ function Settings() {
                       type="file"
                       className="hidden"
                       onChange={handleFileChange}
-                      accept="image/*"
+                      accept=".jpg,.jpeg,.png,.webp"
                     />
                   </label>
                 </div>
                 <div>
                   <button
                     onClick={handleUploadProfilePic}
-                    disabled={!selectedFile}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!selectedFile || isUploading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                   >
-                    Update Photo
+                    {isUploading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      'Update Photo'
+                    )}
                   </button>
+                  {uploadError && (
+                    <p className="text-sm text-red-600 mt-2">{uploadError}</p>
+                  )}
                   <p className="text-sm text-gray-600 mt-2">
-                    Recommended size: 500x500px
+                    Supported formats: JPEG, PNG, WebP (Max 2MB)
                   </p>
                 </div>
               </div>
 
-              {/* Profile Form */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Full Name</label>

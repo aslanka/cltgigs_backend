@@ -40,22 +40,39 @@ const io = init(server);
 setupSocketIO(io);
 app.set('io', io);
 
-// Environment variables
-const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
-
-// Middleware
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const allowedOrigins = [
+      'https://cltgigs.golockedin.com',
+      'https://cltgigsbackend.golockedin.com',
+    ];
+
+    // Allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: process.env.ALLOWED_METHODS.split(','),
-  credentials: true
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'cache-control', // Add cache-control
+    'x-requested-with', // Add x-requested-with for common usage
+    'x-content-type-options'
+  ],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+
+// Security Middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -65,7 +82,6 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https://*.golockedin.com"],
       connectSrc: ["'self'", process.env.FRONTEND_ORIGIN]
     }
-    
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }
 }));
@@ -73,7 +89,7 @@ app.use(helmet({
 app.use(xss());
 app.use(express.json());
 
-// Rate Limiter
+// Rate Limiting
 const limiter = rateLimit({
   windowMs: process.env.RATE_LIMIT_WINDOW,
   max: parseInt(process.env.RATE_LIMIT_MAX)
@@ -83,19 +99,10 @@ app.use(limiter);
 // Passport initialization
 app.use(passport.initialize());
 
-// Static folder with CORS headers
-app.use('/uploads', (req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Methods', 'GET');
-  next();
-});
+// Static Files Handling
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB Connection
-
 const mongooseOptions = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -104,6 +111,7 @@ const mongooseOptions = {
     useFindAndModify: false 
   } : {})
 };
+
 mongoose.connect(process.env.MONGO_URI, mongooseOptions)
   .then(() => console.log('MongoDB connected'))
   .catch(err => {
@@ -111,10 +119,10 @@ mongoose.connect(process.env.MONGO_URI, mongooseOptions)
     process.exit(1);
   });
 
-// Passport strategies
+// Passport Strategies
 require('./strategies/passportStrategies');
 
-// Routes
+// Route Handlers
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/gigs', gigRoutes);
@@ -127,12 +135,13 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 
-// Server startup
+// Server Startup
 const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+// Export for testing
 if (process.env.NODE_ENV === 'test') {
   module.exports = { app, server };
 }

@@ -8,9 +8,10 @@ const {
 
 const { authenticate } = require('../middlewares/auth');
 const { messageUpload } = require('../middlewares/upload');
+const { validateAttachmentUpload } = require('../middlewares/validation');
 
 // General file upload endpoint
-router.post('/', authenticate, messageUpload.single('file'), uploadAttachmentGeneral);
+router.post('/', authenticate, messageUpload.single('file'), validateAttachmentUpload, uploadAttachmentGeneral);
 router.get('/:attachmentId', getAttachment);
 router.delete('/:attachmentId', authenticate, deleteAttachment);
 

@@ -2,60 +2,117 @@
 --- controllers\attachmentController.js ---
 // controllers/attachmentController.js
 const Attachment = require('../models/Attachment');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
+const { validationResult } = require('express-validator');
+const logger = require('../utils/logger');
+const { processImage } = require('../middlewares/upload');
+const sanitize = require('mongo-sanitize');
 
 exports.uploadAttachmentGeneral = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      if (req.file) await fs.unlink(req.file.path);
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { type, foreign_key_id } = req.body;
+    // Additional sanitization
+    const type = sanitize(req.body.type);
+    const foreign_key_id = sanitize(req.body.foreign_key_id);
 
+    if (req.file.mimetype.startsWith('image/')) {
+      await processImage(req.file.path);
+    }
+
+    const stats = await fs.stat(req.file.path);
+    
     const attachment = new Attachment({
       type,
       foreign_key_id,
-      file_url: `/uploads/${req.file.filename}`
+      file_url: `/uploads/${req.file.filename}`,
+      uploaded_by: req.user._id,
+      mime_type: req.file.mimetype,
+      file_size: stats.size
     });
+
     await attachment.save();
-    return res.status(201).json({ message: 'Attachment uploaded', attachmentId: attachment._id, file_url: attachment.file_url });
+    
+    logger.info(`Attachment uploaded: ${attachment._id}`, {
+      user: req.user._id,
+      type: attachment.type
+    });
+
+    return res.status(201).json({
+      message: 'Attachment uploaded',
+      attachmentId: attachment._id,
+      file_url: attachment.file_url
+    });
+
   } catch (err) {
-    console.error(err);
+    if (req.file) await fs.unlink(req.file.path).catch(() => {});
+    logger.error(`Upload error: ${err.message}`, { error: err });
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
 exports.getAttachment = async (req, res) => {
   try {
-    const { attachmentId } = req.params;
-    const attachment = await Attachment.findById(attachmentId);
+    const attachmentId = sanitize(req.params.attachmentId);
+    const attachment = await Attachment.findById(attachmentId)
+      .lean()
+      .setOptions({ sanitizeFilter: true });
+
     if (!attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
+
+    // Set security headers
+    res.set({
+      'Content-Security-Policy': "default-src 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-site'
+    });
+
     return res.json({ attachment });
+
   } catch (err) {
-    console.error(err);
+    logger.error(`Fetch error: ${err.message}`, { error: err });
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
 exports.deleteAttachment = async (req, res) => {
   try {
-    const { attachmentId } = req.params;
-    const attachment = await Attachment.findById(attachmentId);
+    const attachmentId = sanitize(req.params.attachmentId);
+    const attachment = await Attachment.findOne({
+      _id: attachmentId,
+      uploaded_by: req.user._id
+    });
+
     if (!attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
 
-    fs.unlink(path.join(__dirname, '..', attachment.file_url), (err) => {
-      if (err) console.error(err);
+    const filePath = path.join(__dirname, '..', attachment.file_url);
+    await fs.unlink(filePath).catch(err => {
+      logger.warn(`File delete warning: ${err.message}`);
     });
 
     await Attachment.deleteOne({ _id: attachmentId });
+    
+    logger.info(`Attachment deleted: ${attachmentId}`, {
+      user: req.user._id
+    });
+
     return res.json({ message: 'Attachment deleted' });
+
   } catch (err) {
-    console.error(err);
+    logger.error(`Delete error: ${err.message}`, { error: err });
     return res.status(500).json({ error: 'Server error' });
   }
 };
@@ -445,8 +502,10 @@ exports.getUserBookmarks = async (req, res) => {
 const Gig = require('../models/Gig');
 const Bid = require('../models/Bid');
 const Attachment = require('../models/Attachment');
-const { resizeImage } = require('../middlewares/upload');
+const { processImage } = require('../middlewares/upload');
 const { findZipcodesWithinWithDistance } = require('../services/zipcodeService');
+const fs = require('fs').promises;
+const sanitize = require('mongo-sanitize');
 
 exports.getAllGigs = async (req, res) => {
   try {
@@ -691,11 +750,20 @@ exports.createGig = async (req, res) => {
     // Handle attachment if file is uploaded
     if (req.file) {
       try {
-        await resizeImage(req.file.path);
+        const isImage = req.file.mimetype.startsWith('image/');
+        if (isImage) {
+          await processImage(req.file.path);
+        }
+
+        const stats = await fs.stat(req.file.path);
+        
         await Attachment.create({
           type: 'gig',
           foreign_key_id: gig._id,
-          file_url: req.file.path,
+          file_url: `/uploads/${req.file.filename}`,
+          uploaded_by: userId,
+          mime_type: isImage ? 'image/webp' : req.file.mimetype,
+          file_size: stats.size
         });
       } catch (error) {
         console.error('Error handling attachment:', error);
@@ -792,12 +860,27 @@ exports.updateGig = async (req, res) => {
 
     // Handle file upload
     if (req.file) {
-      await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
-      await Attachment.create({
-        type: 'gig',
-        foreign_key_id: gigId,
-        file_url: req.file.path
-      });
+      try {
+        const isImage = req.file.mimetype.startsWith('image/');
+        if (isImage) {
+          await processImage(req.file.path);
+        }
+
+        const stats = await fs.stat(req.file.path);
+
+        await Attachment.deleteMany({ type: 'gig', foreign_key_id: gigId });
+        await Attachment.create({
+          type: 'gig',
+          foreign_key_id: gigId,
+          file_url: `/uploads/${req.file.filename}`,
+          uploaded_by: req.user._id,
+          mime_type: isImage ? 'image/webp' : req.file.mimetype,
+          file_size: stats.size
+        });
+      } catch (error) {
+        console.error('Error handling attachment:', error);
+        return res.status(500).json({ error: 'Failed to process attachment' });
+      }
     }
 
     const updatedGig = await gig.save();
@@ -1594,30 +1677,23 @@ exports.deleteSocialLink = async (req, res) => {
 };
 
 --- middlewares\auth.js ---
-// middlewares/auth.js
 const jwt = require('jsonwebtoken');
 
 exports.authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  const clientIP = req.ip.replace('::ffff:', '').replace('::1', '127.0.0.1');
-
-  // Admin IP check
-  if (process.env.ADMIN_IPS.split(',').includes(clientIP)) {
-    req.user = { role: 'admin' };
-    return next();
+  if (!authHeader) {
+    return res.status(401).json({ error: 'No authorization header' });
   }
-
-  // JWT Authentication
-  if (!authHeader) return res.status(401).json({ error: 'No authorization header' });
-  
   const token = authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token provided' });
-
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { userId: ..., email: ... }
     next();
   } catch (err) {
-    res.status(403).json({ error: 'Invalid token' });
+    return res.status(403).json({ error: 'Invalid token' });
   }
 };
 
@@ -1629,99 +1705,168 @@ exports.authorizeProfileUpdate = (req, res, next) => {
 };
 
 --- middlewares\upload.js ---
+// middlewares/upload.js
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
-const fs = require('fs');
-const fsPromises = fs.promises;
+const fs = require('fs').promises;
+const crypto = require('crypto');
 
-// Create a disk storage to store original files temporarily
+const generateSafeName = bytes => 
+  crypto.randomBytes(bytes).toString('hex');
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Make sure this folder exists
+  destination: async (req, file, cb) => {
+    const uploadDir = 'uploads/';
+    await fs.mkdir(uploadDir, { recursive: true });
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname).toLowerCase();
+    const filename = `${generateSafeName(16)}${ext}`;
+    cb(null, filename);
   }
 });
 
-// Filter to only allow images for gig attachments
-function gigFileFilter(req, file, cb) {
-  if (!file.mimetype.startsWith('image/')) {
-    return cb(new Error('Only images are allowed for gig attachments'), false);
+const fileTypeValidations = {
+  profile: {
+    mime: /^image\/(jpeg|png|webp)$/,
+    ext: /\.(jpe?g|png|webp)$/i,
+    maxSize: 2 * 1024 * 1024 // 2MB
+  },
+  general: {
+    mime: /^(image|application\/pdf|text\/plain)/,
+    ext: /\.(jpe?g|png|pdf|txt)$/i,
+    maxSize: 5 * 1024 * 1024 // 5MB
   }
-  cb(null, true);
-}
-
-function generalFileFilter(req, file, cb) {
-  // For message attachments we can allow any file type, or implement more checks
-  cb(null, true);
-}
-
-const gigUpload = multer({
-  storage: storage,
-  fileFilter: gigFileFilter
-});
-
-const messageUpload = multer({
-  storage: storage,
-  fileFilter: generalFileFilter
-});
-
-// A helper function to resize images if needed
-async function resizeImage(filePath, width = 800, height = 800) {
-  const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
-  try {
-    await sharp(filePath)
-      .resize({ width, height, fit: 'inside' })
-      .toFile(newFilePath);
-  } catch (sharpErr) {
-    console.error('Error resizing image:', sharpErr);
-    throw sharpErr;
-  }
-
-  try {
-    if (await fsPromises.access(filePath).then(() => true).catch(() => false)) {
-      await fsPromises.unlink(filePath);
-    }
-  } catch (unlinkErr) {
-    console.error('Error deleting original file:', unlinkErr);
-  }
-
-  try {
-    await fsPromises.rename(newFilePath, filePath);
-  } catch (renameErr) {
-    console.error('Error renaming resized file:', renameErr);
-  }
-}
-
-module.exports = {
-  gigUpload,
-  messageUpload,
-  resizeImage
 };
 
+const fileFilter = (req, file, cb) => {
+  try {
+    const fileType = req.body.type === 'profile' ? 'profile' : 'general';
+    const { mime, ext, maxSize } = fileTypeValidations[fileType];
+
+    if (!mime.test(file.mimetype) || !ext.test(file.originalname)) {
+      return cb(new Error('Invalid file type'), false);
+    }
+
+    if (file.size > maxSize) {
+      return cb(new Error('File size exceeds limit'), false);
+    }
+
+    cb(null, true);
+  } catch (err) {
+    cb(err, false);
+  }
+};
+
+const messageUpload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1
+  }
+});
+
+const processImage = async (filePath) => {
+  try {
+    const metadata = await sharp(filePath).metadata();
+    const needsResize = metadata.width > 800 || metadata.height > 800;
+    
+    if (needsResize) {
+      await sharp(filePath)
+        .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+        .toFormat('webp')
+        .toFile(`${filePath}.webp`);
+      
+      await fs.unlink(filePath);
+      await fs.rename(`${filePath}.webp`, filePath);
+    }
+
+    if (metadata.format !== 'webp') {
+      await sharp(filePath)
+        .toFormat('webp')
+        .toFile(`${filePath}.webp`);
+      
+      await fs.unlink(filePath);
+      await fs.rename(`${filePath}.webp`, filePath);
+    }
+  } catch (err) {
+    await fs.unlink(filePath);
+    throw err;
+  }
+};
+
+module.exports = {
+  messageUpload,
+  processImage
+};
+
+--- middlewares\validation.js ---
+const { body, param } = require('express-validator');
+
+exports.validateAttachmentUpload = [
+  body('type').isIn(['gig', 'message', 'bid', 'profile', 'portfolio']),
+  body('foreign_key_id').isMongoId(),
+  param('attachmentId').isMongoId()
+];
 
 --- models\Attachment.js ---
+// models/Attachment.js
 const mongoose = require('mongoose');
+const sanitize = require('mongo-sanitize');
 
 const attachmentSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: ['gig', 'message', 'bid', 'profile', 'portfolio'],
-    required: true
+    required: true,
+    index: true
   },
   foreign_key_id: {
     type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    index: true
+  },
+  file_url: { 
+    type: String, 
+    required: true,
+    validate: {
+      validator: v => /^\/uploads\/[a-f0-9-]+\.\w+$/.test(v),
+      message: 'Invalid file URL format'
+    }
+  },
+  uploaded_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
-  file_url: { type: String, required: true },
-  uploaded_at: { type: Date, default: Date.now }
+  mime_type: {
+    type: String,
+    required: true,
+    match: /^[a-z]+\/[a-z0-9-+.]+$/i
+  },
+  file_size: {
+    type: Number,
+    min: 1,
+    max: 5 * 1024 * 1024 // 5MB
+  },
+  uploaded_at: { 
+    type: Date, 
+    default: Date.now,
+    index: true 
+  }
+});
+
+// Sanitize inputs before saving
+attachmentSchema.pre('save', function(next) {
+  this.type = sanitize(this.type);
+  this.file_url = sanitize(this.file_url);
+  next();
 });
 
 module.exports = mongoose.model('Attachment', attachmentSchema);
-
 
 --- models\Bid.js ---
 const mongoose = require('mongoose');
@@ -2050,14 +2195,14 @@ const {
 
 const { authenticate } = require('../middlewares/auth');
 const { messageUpload } = require('../middlewares/upload');
+const { validateAttachmentUpload } = require('../middlewares/validation');
 
 // General file upload endpoint
-router.post('/', authenticate, messageUpload.single('file'), uploadAttachmentGeneral);
+router.post('/', authenticate, messageUpload.single('file'), validateAttachmentUpload, uploadAttachmentGeneral);
 router.get('/:attachmentId', getAttachment);
 router.delete('/:attachmentId', authenticate, deleteAttachment);
 
 module.exports = router;
-
 
 --- routes\authRoutes.js ---
 const express = require('express');
@@ -2170,11 +2315,11 @@ router.get('/user', authenticate, getUserBookmarks);
 module.exports = router;
 
 --- routes\gigRoutes.js ---
-// gigRoutes.js (updated)
+// routes/gigRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { gigUpload } = require('../middlewares/upload');
+const { messageUpload } = require('../middlewares/upload');
 const {
   getAllGigs,
   createGig,
@@ -2184,26 +2329,17 @@ const {
   deleteGig
 } = require('../controllers/gigController');
 
-// Public can see all gigs
+// Only change the upload middleware reference
+router.post('/', authenticate, messageUpload.single('gigImage'), createGig);
+router.put('/:gigId', authenticate, messageUpload.single('gigImage'), updateGig);
+
+// Rest of the file remains exactly the same
 router.get('/', getAllGigs);
-
-// Auth user can create a gig
-router.post('/', authenticate, gigUpload.single('gigImage'), createGig);
-
-// Public can see gig details
 router.get('/:gigId', getGigDetails);
-
-// Auth user can see their own gigs
 router.get('/mygigs/owner', authenticate, getMyGigs);
-
-// Auth user can edit gig
-router.put('/:gigId', authenticate, gigUpload.single('gigImage'), updateGig);
-
-// Auth user can delete gig
 router.delete('/:gigId', authenticate, deleteGig);
 
 module.exports = router;
-
 
 --- routes\leaderboardRoutes.js ---
 // routes/leaderboardRoutes.js
@@ -2490,6 +2626,29 @@ passport.use(
 );
 
 
+--- utils\logger.js ---
+const { createLogger, format, transports } = require('winston');
+const { combine, timestamp, printf } = format;
+
+const logFormat = printf(({ level, message, timestamp }) => {
+  return `${timestamp} [${level}]: ${message}`;
+});
+
+const logger = createLogger({
+  level: 'info',
+  format: combine(
+    timestamp(),
+    logFormat
+  ),
+  transports: [
+    new transports.Console(),
+    new transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new transports.File({ filename: 'logs/combined.log' })
+  ]
+});
+
+module.exports = logger;
+
 --- utils\socketHandlers.js ---
 // utils/socketHandlers.js
 const jwt = require('jsonwebtoken');
@@ -2648,22 +2807,39 @@ const io = init(server);
 setupSocketIO(io);
 app.set('io', io);
 
-// Environment variables
-const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
-
-// Middleware
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const allowedOrigins = [
+      'https://cltgigs.golockedin.com',
+      'https://cltgigsbackend.golockedin.com',
+    ];
+
+    // Allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: process.env.ALLOWED_METHODS.split(','),
-  credentials: true
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'cache-control', // Add cache-control
+    'x-requested-with', // Add x-requested-with for common usage
+    'x-content-type-options'
+  ],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+
+// Security Middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -2673,7 +2849,6 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https://*.golockedin.com"],
       connectSrc: ["'self'", process.env.FRONTEND_ORIGIN]
     }
-    
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }
 }));
@@ -2681,7 +2856,7 @@ app.use(helmet({
 app.use(xss());
 app.use(express.json());
 
-// Rate Limiter
+// Rate Limiting
 const limiter = rateLimit({
   windowMs: process.env.RATE_LIMIT_WINDOW,
   max: parseInt(process.env.RATE_LIMIT_MAX)
@@ -2691,19 +2866,10 @@ app.use(limiter);
 // Passport initialization
 app.use(passport.initialize());
 
-// Static folder with CORS headers
-app.use('/uploads', (req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Methods', 'GET');
-  next();
-});
+// Static Files Handling
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB Connection
-
 const mongooseOptions = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -2712,6 +2878,7 @@ const mongooseOptions = {
     useFindAndModify: false 
   } : {})
 };
+
 mongoose.connect(process.env.MONGO_URI, mongooseOptions)
   .then(() => console.log('MongoDB connected'))
   .catch(err => {
@@ -2719,10 +2886,10 @@ mongoose.connect(process.env.MONGO_URI, mongooseOptions)
     process.exit(1);
   });
 
-// Passport strategies
+// Passport Strategies
 require('./strategies/passportStrategies');
 
-// Routes
+// Route Handlers
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/gigs', gigRoutes);
@@ -2735,12 +2902,13 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 
-// Server startup
+// Server Startup
 const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+// Export for testing
 if (process.env.NODE_ENV === 'test') {
   module.exports = { app, server };
 }

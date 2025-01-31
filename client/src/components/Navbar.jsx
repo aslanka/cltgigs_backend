@@ -18,12 +18,13 @@ const Navbar = () => {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const mobileMenuRef = useRef();
   const profileDropdownRef = useRef();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (token && userData?.userId) {
-      axios.get(`/users/${userData.userId}`)
+      axios.get(`/users/${userData.userId}?refresh=${refreshKey}`)
         .then((res) => setProfile(res.data))
-        .catch((err) => console.error(err));
+        .catch(console.error);
 
       fetchNotifications();
 
@@ -39,7 +40,7 @@ const Navbar = () => {
 
       return () => socket.disconnect();
     }
-  }, [token, userData]);
+  }, [token, userData, refreshKey]);
 
   const fetchNotifications = async () => {
     try {

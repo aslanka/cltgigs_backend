@@ -1,8 +1,8 @@
-// gigRoutes.js (updated)
+// routes/gigRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { gigUpload } = require('../middlewares/upload');
+const { messageUpload } = require('../middlewares/upload');
 const {
   getAllGigs,
   createGig,
@@ -12,22 +12,14 @@ const {
   deleteGig
 } = require('../controllers/gigController');
 
-// Public can see all gigs
+// Only change the upload middleware reference
+router.post('/', authenticate, messageUpload.single('gigImage'), createGig);
+router.put('/:gigId', authenticate, messageUpload.single('gigImage'), updateGig);
+
+// Rest of the file remains exactly the same
 router.get('/', getAllGigs);
-
-// Auth user can create a gig
-router.post('/', authenticate, gigUpload.single('gigImage'), createGig);
-
-// Public can see gig details
 router.get('/:gigId', getGigDetails);
-
-// Auth user can see their own gigs
 router.get('/mygigs/owner', authenticate, getMyGigs);
-
-// Auth user can edit gig
-router.put('/:gigId', authenticate, gigUpload.single('gigImage'), updateGig);
-
-// Auth user can delete gig
 router.delete('/:gigId', authenticate, deleteGig);
 
 module.exports = router;
