@@ -19,6 +19,7 @@ import SearchResults from './pages/SearchResults';
 import Leaderboard from './pages/Leaderboard'; // Add this import
 import ViewRewards from './pages/ViewRewards';
 import GamificationGuide from './pages/GamificationGuide';
+import WaitingListLandingPage from './pages/WaitingListLandingPage';
 
 // Protected
 import ProtectedRoute from './components/ProtectedRoute';
@@ -40,6 +41,7 @@ function App() {
           <Route path="/gigs/:gigId" element={<GigDetails />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/search" element={<SearchResults />} />
+          <Route path="/waitinglist" element={<WaitingListLandingPage />} />
           <Route path="/communitycard/:userId" element={<CommunityCard />} />
           <Route path="/profile/:userId" element={<CommunityCard />} />
 
