@@ -4,6 +4,7 @@ import React, {
   useState,
   useContext,
   useRef,
+  useMemo,
   useCallback,
   useReducer,
 } from 'react';
@@ -69,14 +70,11 @@ const messageReducer = (state, action) => {
 };
 
 // Hook to initialize and manage socket connection
-const useSocket = (token, handlers) => {
+const useSocket = (handlers) => {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    if (!token) return;
-
     const socket = io('https://cltgigsbackend.golockedin.com', {
-      auth: { token },
       withCredentials: true,
     });
 
@@ -95,17 +93,17 @@ const useSocket = (token, handlers) => {
     return () => {
       socket.disconnect();
     };
-  }, [token, handlers]);
+  }, [handlers]);
 
   return socketRef;
 };
 
 // Hook to fetch and manage conversations
-const useConversations = (token) => {
+const useConversations = (userData) => {
   const [conversations, setConversations] = useState([]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!userData) return;
 
     const fetchConversations = async () => {
       try {
@@ -118,17 +116,17 @@ const useConversations = (token) => {
     };
 
     fetchConversations();
-  }, [token]);
+  }, [userData]);
 
   return [conversations, setConversations];
 };
 
 // Hook to fetch and manage messages for an active conversation
-const useMessages = (activeConversation, token) => {
+const useMessages = (activeConversation, userData) => {
   const [messages, dispatch] = useReducer(messageReducer, []);
 
   useEffect(() => {
-    if (!activeConversation || !token) return;
+    if (!activeConversation || !userData) return;
 
     const fetchMessages = async () => {
       try {
@@ -143,7 +141,7 @@ const useMessages = (activeConversation, token) => {
     };
 
     fetchMessages();
-  }, [activeConversation, token]);
+  }, [activeConversation, userData]);
 
   return [messages, dispatch];
 };
@@ -311,15 +309,15 @@ const ConversationItem = React.memo(
 
 // Main Messages Component
 export default function Messages() {
-  const { token, userData } = useContext(AuthContext);
-  const userId = userData?.userId;
+  const { userData } = useContext(AuthContext);
+  const userId = userData?._id;
   const navigate = useNavigate();
   const { conversationId: urlConversationId } = useParams();
   const isMobile = useIsMobile();
 
-  const [conversations, setConversations] = useConversations(token);
+  const [conversations, setConversations] = useConversations(userData);
   const [activeConversation, setActiveConversation] = useState(null);
-  const [messages, dispatchMessages] = useMessages(activeConversation, token);
+  const [messages, dispatchMessages] = useMessages(activeConversation, userData);
   const [newMessage, setNewMessage] = useState('');
   const [attachment, setAttachment] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -357,11 +355,16 @@ export default function Messages() {
     [dispatchMessages]
   );
 
-  const socketRef = useSocket(token, {
-    typing: handleTypingIndicator,
-    newMessage: handleNewMessage,
-    messageDeleted: handleMessageDeleted,
-  });
+  const socketHandlers = useMemo(
+    () => ({
+      typing: handleTypingIndicator,
+      newMessage: handleNewMessage,
+      messageDeleted: handleMessageDeleted,
+    }),
+    [handleTypingIndicator, handleNewMessage, handleMessageDeleted]
+  );
+  
+  const socketRef = useSocket(socketHandlers);
 
   // Effects
   useEffect(() => {
@@ -370,7 +373,7 @@ export default function Messages() {
   }, [activeConversation, userId]);
 
   useEffect(() => {
-    if (activeConversation?.id && socketRef.current?.current) {
+    if (activeConversation?._id && socketRef.current) {
       socketRef.current.emit('joinConversation', activeConversation._id);
       scrollToBottom();
     }
@@ -399,36 +402,62 @@ export default function Messages() {
   }, []);
 
   // Send Message Handler
-  const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !attachment) || !activeConversation) return;
+  // Send Message Handler (in Messages.jsx)
+const handleSendMessage = async () => {
+  // Return if there’s nothing to send or no active conversation.
+  if ((!newMessage.trim() && !attachment) || !activeConversation) return;
 
-    const tempId = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const tempMessage = createTempMessage(tempId);
+  // Capture the content before clearing state
+  const messageContent = newMessage.trim();
 
-    setNewMessage('');
-    setAttachment(null);
-    dispatchMessages({ type: 'ADD_MESSAGE', payload: tempMessage });
-    scrollToBottom();
-
-    try {
-      const file_url = await uploadAttachment();
-      const sentMessage = await sendMessage(file_url);
-
-      dispatchMessages({
-        type: 'UPDATE_MESSAGE',
-        payload: { ...sentMessage, status: 'sent' },
-      });
-      socketRef.current?.emit('newMessage', sentMessage);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      dispatchMessages({
-        type: 'UPDATE_MESSAGE',
-        payload: { _id: tempId, status: 'failed' },
-      });
-    } finally {
-      setIsUploading(false);
-    }
+  // Create a temporary (optimistic) message with a temp ID.
+  const tempId = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const tempMessage = {
+    _id: tempId,
+    content: messageContent,
+    sender_id: userId,
+    created_at: new Date().toISOString(),
+    file_url: attachment ? URL.createObjectURL(attachment) : null,
+    conversation_id: activeConversation._id,
+    status: 'sending',
   };
+
+  // Optimistically add the message
+  dispatchMessages({ type: 'ADD_MESSAGE', payload: tempMessage });
+  scrollToBottom();
+
+  // Clear the input state
+  setNewMessage('');
+  setAttachment(null);
+
+  try {
+    // Upload any attachment (if present)
+    const file_url = await uploadAttachment();
+
+    // Send the message to the server—pass in the captured content!
+    const sentMessage = await sendMessage(file_url, messageContent);
+
+    // Remove the temporary message and add the real message
+    dispatchMessages({ type: 'DELETE_MESSAGE', payload: tempId });
+    dispatchMessages({
+      type: 'ADD_MESSAGE',
+      payload: { ...sentMessage, status: 'sent' },
+    });
+
+    // Emit the new message via socket so the other user sees it
+    socketRef.current?.emit('newMessage', sentMessage);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    // Mark the temporary message as failed
+    dispatchMessages({
+      type: 'UPDATE_MESSAGE',
+      payload: { _id: tempId, status: 'failed' },
+    });
+  } finally {
+    setIsUploading(false);
+  }
+};
+
 
   // Create a temporary message for optimistic UI
   const createTempMessage = (tempId) => ({
@@ -456,13 +485,14 @@ export default function Messages() {
   };
 
   // Send Message to Server
-  const sendMessage = async (file_url) => {
+  const sendMessage = async (file_url, content) => {
     const { data } = await axios.post('/messages', {
       conversationId: activeConversation._id,
-      content: newMessage.trim(),
+      content, // use the content variable instead of newMessage (which is now cleared)
       file_url,
     });
-    return data;
+    // Return the new message from the server response
+    return data.newMsg;
   };
 
   // Close Conversation Handler

@@ -118,6 +118,7 @@ exports.deleteAttachment = async (req, res) => {
 };
 
 --- controllers\authController.js ---
+// controllers/authController.js
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -167,13 +168,38 @@ exports.loginUser = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    return res.json({ message: 'Login successful', token });
+    console.log(token);
+
+    // Set HttpOnly cookie WITH DOMAIN
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      sameSite: 'lax', // Prevent CSRF attacks
+      maxAge: 24 * 60 * 60 * 1000, // Cookie expiry (24 hours) - adjust as needed
+      path: '/', // Cookie available for the entire site
+      domain: '.golockedin.com', // ADD THIS LINE:  Set the domain for cross-subdomain access
+    });
+
+    console.log(token);
+    console.log(res);
+
+    return res.json({ message: 'Login successful' }); // Don't send the token in the response body
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
+exports.logoutUser = (req, res) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    domain: '.golockedin.com', // Ensure domain is cleared as well
+  });
+  res.status(200).json({ message: 'Logged out successfully' });
+};
 
 --- controllers\bidController.js ---
 const Bid = require('../models/Bid');
@@ -1677,25 +1703,28 @@ exports.deleteSocialLink = async (req, res) => {
 };
 
 --- middlewares\auth.js ---
+// middlewares/auth.js
 const jwt = require('jsonwebtoken');
 
 exports.authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ error: 'No authorization header' });
-  }
-  const token = authHeader.split(' ')[1];
+  const token = req.cookies.token;
+  console.log('Received token:', token); // Debug logging
+
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { userId: ..., email: ... }
+    console.log('Decoded token:', decoded); // Debug logging
+    req.user = decoded;
     next();
   } catch (err) {
+    console.error('JWT verification error:', err.message);
     return res.status(403).json({ error: 'Invalid token' });
   }
 };
+
 
 exports.authorizeProfileUpdate = (req, res, next) => {
   if (req.params.userId !== req.user.userId) {
@@ -2205,17 +2234,20 @@ router.delete('/:attachmentId', authenticate, deleteAttachment);
 module.exports = router;
 
 --- routes\authRoutes.js ---
+// routes/authRoutes.js  (Also set domain in OAuth callbacks)
 const express = require('express');
 const passport = require('passport');
-const { registerUser, loginUser } = require('../controllers/authController');
+const { registerUser, loginUser, logoutUser } = require('../controllers/authController');
 const jwt = require('jsonwebtoken');
+
 const router = express.Router();
 
-// Existing email/password routes
+// Email/Password
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/logout', logoutUser);
 
-// Helper to generate JWT after OAuth success
+// Helper function (remains the same)
 const generateToken = (user) => {
   return jwt.sign(
     { userId: user._id, email: user.email },
@@ -2224,50 +2256,78 @@ const generateToken = (user) => {
   );
 };
 
-
-
+// Facebook OAuth - DOMAIN FIX
 router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
-
 router.get(
   '/facebook/callback',
   passport.authenticate('facebook', { session: false }),
   (req, res) => {
     const token = generateToken(req.user);
-    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/',
+      domain: '.golockedin.com', // Set the domain
+    });
+    res.redirect(`${process.env.FRONTEND_ORIGIN}`);
   }
 );
 
+// Google OAuth - DOMAIN FIX
 router.get(
   '/google',
-  passport.authenticate('google', {
-    scope: ['profile', 'email'],
-    prompt: 'select_account' // Optional: Force account selection
-  })
+  passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' })
 );
-
 router.get(
   '/google/callback',
-  passport.authenticate('google', {
-    session: false,
-    failureRedirect: `${process.env.FRONTEND_URL}/login?error=google`
-  }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_ORIGIN}/login?error=google` }),
   (req, res) => {
     const token = generateToken(req.user);
-    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/',
+      domain: '.golockedin.com',  // Set the domain
+    });
+    res.redirect(`${process.env.FRONTEND_ORIGIN}`);
   }
 );
 
+router.get('/check-session', (req, res) => {
+  const token = req.cookies.token;
+  if (!token) return res.json({ isAuthenticated: false });
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET);
+    res.json({ isAuthenticated: true });
+  } catch {
+    res.json({ isAuthenticated: false });
+  }
+});
+
+// Apple OAuth - DOMAIN FIX
 router.post(
   '/apple',
   passport.authenticate('apple', { session: false }),
   (req, res) => {
     const token = generateToken(req.user);
-    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/',
+      domain: '.golockedin.com', // Set the domain
+    });
+    res.redirect(`${process.env.FRONTEND_ORIGIN}`);
   }
 );
 
 module.exports = router;
-
 
 --- routes\bidRoutes.js ---
 // routes/bidRoutes.js
@@ -2458,14 +2518,30 @@ module.exports = router;
 
 
 --- routes\userRoutes.js ---
+// routes/userRoutes.js (Corrected)
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middlewares/auth');
+const { authenticate } = require('../middlewares/auth'); // Corrected path
 const userController = require('../controllers/userController');
-
+const User = require('../models/User'); // <---  IMPORT THE USER MODEL.  THIS WAS MISSING!
 
 const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
 const { messageUpload } = require('../middlewares/upload');
+
+router.get('/me', authenticate, async (req, res) => {
+    try {
+      console.log("req.user:", req.user); // <--- ADD THIS for debugging
+
+      const user = await User.findById(req.user.userId).select('-password');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 
 // Public profile
 router.get('/:userId', userController.getPublicProfile);
@@ -2492,8 +2568,8 @@ router.post('/:userId/social-links', authenticate, userController.addSocialLink)
 router.delete('/:userId/social-links/:index', authenticate, userController.deleteSocialLink);
 
 
-module.exports = router;
 
+module.exports = router;
 
 --- strategies\passportStrategies.js ---
 const passport = require('passport');
@@ -2652,15 +2728,21 @@ module.exports = logger;
 --- utils\socketHandlers.js ---
 // utils/socketHandlers.js
 const jwt = require('jsonwebtoken');
+const cookie = require('cookie');
 const Notification = require('../models/Notification');
 
 // Store online users for notifications
 let onlineUsers = {}; // { userId: socketId }
 
 function setupSocketIO(io) {
-  // Middleware to verify JWT on connection
+  // Middleware to verify JWT from cookies on connection
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+    console.log('Handshake cookies:', socket.handshake.headers.cookie);
+    let token;
+    if (socket.handshake.headers.cookie) {
+      const cookies = cookie.parse(socket.handshake.headers.cookie);
+      token = cookies.token;
+    }
     if (!token) return next(new Error('No token provided'));
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -2702,7 +2784,7 @@ function setupSocketIO(io) {
 
     // --- New Notification Functionality ---
     socket.on('newNotification', (notification) => {
-      // Emit the notification to the recipient
+      // Emit the notification to the recipient using their stored socket id
       const recipientSocketId = onlineUsers[notification.user_id];
       if (recipientSocketId) {
         io.to(recipientSocketId).emit('newNotification', notification);
@@ -2718,6 +2800,7 @@ function setupSocketIO(io) {
 }
 
 module.exports = { setupSocketIO };
+
 
 --- utils\socketIOInstance.js ---
 // utils/socketIOInstance.js
@@ -2765,11 +2848,8 @@ module.exports = {
 };
 
 --- server.js ---
-if (process.env.NODE_ENV === 'test') {
-  require('dotenv').config({ path: '.env.test' });
-} else {
-  require('dotenv').config();
-}
+// server.js (Main application file) - CORS and Cookie Domain Fix
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -2781,8 +2861,9 @@ const passport = require('passport');
 const http = require('http');
 const { init } = require('./utils/socketIOInstance');
 const { setupSocketIO } = require('./utils/socketHandlers');
+const cookieParser = require('cookie-parser');
 
-// Import Routes
+// Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const gigRoutes = require('./routes/gigRoutes');
@@ -2795,101 +2876,75 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
 const bookmarkRoutes = require('./routes/bookmarkRoutes');
 
-// Initialize Express app
 const app = express();
 app.set('trust proxy', 1);
 
-// Create HTTP server
+// HTTP server + Socket.IO
 const server = http.createServer(app);
-
-// Initialize Socket.IO
 const io = init(server);
 setupSocketIO(io);
 app.set('io', io);
 
+// CORS Setup - Explicitly allow Cache-Control
 const corsOptions = {
   origin: (origin, callback) => {
-    const allowedOrigins = [
-      'https://cltgigs.golockedin.com',
-      'https://cltgigsbackend.golockedin.com',
-    ];
-
-    // Allow requests with no origin (like mobile apps, curl)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
+    //console.log("Allowed Origins:", allowedOrigins);
+    //console.log('hi');
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error(`Origin ${origin} not allowed`));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'cache-control', // Add cache-control
-    'x-requested-with', // Add x-requested-with for common usage
-    'x-content-type-options'
-  ],
   credentials: true,
-  optionsSuccessStatus: 204
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with', 'Cache-Control'] // ADD 'Cache-Control' here
 };
-
-// Apply CORS middleware
 app.use(cors(corsOptions));
 
-
-// Security Middleware
+// Security Middlewares
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://apis.google.com"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https://*.golockedin.com"],
-      connectSrc: ["'self'", process.env.FRONTEND_ORIGIN]
-    }
-  },
-  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }
+  contentSecurityPolicy: false, // Temporarily disable for testing
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
 }));
-
 app.use(xss());
-app.use(express.json());
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: process.env.RATE_LIMIT_WINDOW,
-  max: parseInt(process.env.RATE_LIMIT_MAX)
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW, 10), // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX, 10)         // 100 requests
 });
 app.use(limiter);
+
+// Body Parsing
+app.use(express.json());
+app.use(cookieParser()); // Use cookie-parser middleware
 
 // Passport initialization
 app.use(passport.initialize());
 
-// Static Files Handling
+// Static Files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB Connection
-const mongooseOptions = {
+// MongoDB
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-  ...(process.env.NODE_ENV === 'test' ? { 
-    useCreateIndex: true,
-    useFindAndModify: false 
-  } : {})
-};
-
-mongoose.connect(process.env.MONGO_URI, mongooseOptions)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+  useUnifiedTopology: true
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
 
 // Passport Strategies
 require('./strategies/passportStrategies');
 
-// Route Handlers
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/gigs', gigRoutes);
@@ -2902,13 +2957,13 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 
-// Server Startup
+// Start Server
 const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Export for testing
+// Export for testing - Keeping this as it was in original code, assuming you still need it for tests
 if (process.env.NODE_ENV === 'test') {
   module.exports = { app, server };
 }

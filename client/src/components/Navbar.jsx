@@ -35,31 +35,29 @@ const Navbar = () => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    // Use the _id property (from /users/me) instead of userId
     if (userData?._id) {
-      // Fetch the latest profile data.
-      axios
-        .get(`/users/${userData._id}?refresh=${refreshKey}`)
-        .then((res) => setProfile(res.data))
-        .catch(console.error);
-
-      // Fetch notifications.
-      fetchNotifications();
-
-      // Set up the socket connection.
-      // Cookies will be automatically sent, so there's no need to pass a token.
-      const socket = io(import.meta.env.VITE_SERVER);
-
+      // Create a persistent socket connection.
+      const socket = io(import.meta.env.VITE_SERVER, {
+        withCredentials: true, // send cookies automatically
+      });
+  
+      // Listen for new notifications.
       socket.on('newNotification', (notification) => {
-        // Compare using the _id property.
-        if (notification.user_id === userData._id) {
+        // Compare the notification's user_id with the current user's _id
+        if (notification.user_id.toString() === userData._id.toString()) {
+          // Increase the unread count.
           setUnreadCount((prev) => prev + 1);
+          // Optionally, refresh the notifications list to update the panel.
+          fetchNotifications();
         }
       });
-
-      return () => socket.disconnect();
+  
+      // Clean up the socket when the component unmounts or userData changes.
+      return () => {
+        socket.disconnect();
+      };
     }
-  }, [userData, refreshKey]);
+  }, [userData]); // Only re-run when userData changes (not refreshKey)
 
   const fetchNotifications = async () => {
     try {
@@ -191,9 +189,10 @@ const Navbar = () => {
                           <NavLink to="/settings" icon={Settings}>
                             Settings
                           </NavLink>
-                          <NavLink to={`/profile/${profile?._id}`} icon={User}>
+                          <NavLink to={`/profile/${userData?._id}`} icon={User}>
                             Profile
                           </NavLink>
+
                           <button
                             onClick={handleLogout}
                             className="flex items-center space-x-3 w-full px-4 py-3 text-gray-700 hover:bg-red-50 rounded-lg transition-colors"
