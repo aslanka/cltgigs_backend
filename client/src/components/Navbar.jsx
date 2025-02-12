@@ -1,6 +1,6 @@
 // src/components/Navbar.jsx
-import React, { useContext, useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useContext, useState, useEffect, useRef } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Menu,
   Bell,
@@ -13,78 +13,78 @@ import {
   Briefcase,
   Trophy,
   Zap,
-} from 'lucide-react';
-import { AuthContext } from '../context/AuthContext';
-import axios from '../api/axiosInstance';
-import ProfilePicture from '../components/ProfilePicture';
-import Notifications from '../components/Notifications';
-import { motion, AnimatePresence } from 'framer-motion';
-import { io } from 'socket.io-client';
+} from "lucide-react";
+import { AuthContext } from "../context/AuthContext";
+import axios from "../api/axiosInstance";
+import ProfilePicture from "../components/ProfilePicture";
+import Notifications from "../components/Notifications";
+import { motion, AnimatePresence } from "framer-motion";
+import { io } from "socket.io-client";
 
 const Navbar = () => {
-  // Removed "token" since we're now using cookie-based auth.
   const { userData, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [profile, setProfile] = useState(null);
+  // Instead of a separate "profile" state, we use userData
+  const profile = userData;
   const [unreadCount, setUnreadCount] = useState(0);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const mobileMenuRef = useRef();
   const profileDropdownRef = useRef();
-  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (userData?._id) {
-      // Create a persistent socket connection.
+      // Create a persistent socket connection
       const socket = io(import.meta.env.VITE_SERVER, {
-        withCredentials: true, // send cookies automatically
+        withCredentials: true,
       });
-  
-      // Listen for new notifications.
-      socket.on('newNotification', (notification) => {
-        // Compare the notification's user_id with the current user's _id
+
+      socket.on("newNotification", (notification) => {
         if (notification.user_id.toString() === userData._id.toString()) {
-          // Increase the unread count.
           setUnreadCount((prev) => prev + 1);
-          // Optionally, refresh the notifications list to update the panel.
           fetchNotifications();
         }
       });
-  
-      // Clean up the socket when the component unmounts or userData changes.
+
       return () => {
         socket.disconnect();
       };
     }
-  }, [userData]); // Only re-run when userData changes (not refreshKey)
+  }, [userData]);
 
   const fetchNotifications = async () => {
     try {
-      const response = await axios.get('/notifications');
+      const response = await axios.get("/notifications");
       setUnreadCount(response.data.filter((n) => !n.read).length);
     } catch (err) {
-      console.error('Error fetching notifications:', err);
+      console.error("Error fetching notifications:", err);
     }
   };
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target)
+      ) {
         setMobileMenuOpen(false);
       }
-      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target)
+      ) {
         setIsProfileDropdownOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleLogout = () => {
     logout();
     setMobileMenuOpen(false);
-    navigate('/');
+    navigate("/");
   };
 
   const NavLink = ({ to, icon: Icon, children, onClick }) => (
@@ -121,7 +121,7 @@ const Navbar = () => {
                   </Link>
 
                   <button
-                    onClick={() => navigate('/create-gig')}
+                    onClick={() => navigate("/create-gig")}
                     className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     <Zap className="w-5 h-5" />
@@ -146,7 +146,9 @@ const Navbar = () => {
 
                 <div className="relative" ref={profileDropdownRef}>
                   <button
-                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                    onClick={() =>
+                      setIsProfileDropdownOpen(!isProfileDropdownOpen)
+                    }
                     className="group"
                   >
                     <ProfilePicture
@@ -173,8 +175,12 @@ const Navbar = () => {
                               size="12"
                             />
                             <div>
-                              <p className="font-medium text-gray-900">{profile?.name}</p>
-                              <p className="text-sm text-blue-600">{profile?.xp || 0} XP</p>
+                              <p className="font-medium text-gray-900">
+                                {profile?.name}
+                              </p>
+                              <p className="text-sm text-blue-600">
+                                {profile?.xp || 0} XP
+                              </p>
                             </div>
                           </div>
                         </div>

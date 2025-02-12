@@ -6,11 +6,11 @@ const userController = require('../controllers/userController');
 const User = require('../models/User'); // <---  IMPORT THE USER MODEL.  THIS WAS MISSING!
 
 const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
-const { messageUpload } = require('../middlewares/upload');
+const { uploadMiddleware } = require('../middlewares/upload');
 
 router.get('/me', authenticate, async (req, res) => {
     try {
-      console.log("req.user:", req.user); // <--- ADD THIS for debugging
+      console.log("req.user:", req.user); // <--- ADD THIS for 
 
       const user = await User.findById(req.user.userId).select('-password');
       if (!user) {
@@ -26,18 +26,18 @@ router.get('/me', authenticate, async (req, res) => {
 // Public profile
 router.get('/:userId', userController.getPublicProfile);
 
-router.post('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
-router.put('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+router.post('/:userId/portfolio', authenticate, uploadMiddleware.array('portfolio'), uploadPortfolio);
+router.put('/:userId/portfolio', authenticate, uploadMiddleware.array('portfolio'), uploadPortfolio);
 
 // Update user profile
 router.put('/:userId', authenticate, userController.updateProfile);
 
 // routes/userRoutes.js
-router.post('/:userId/certifications', authenticate, messageUpload.array('certifications'), uploadCertifications);
+router.post('/:userId/certifications', authenticate, uploadMiddleware.array('certifications'), uploadCertifications);
 router.put('/:userId', authenticate, updateProfile);
 
 // In your Express routes:
-router.delete('/users/:userId/portfolio', userController.removePortfolioItem);
+router.delete('/:userId/portfolio', userController.removePortfolioItem);
 
 router.get('/:userId/block-status', authenticate, userController.checkBlockStatus);
 

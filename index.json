@@ -1210,7 +1210,7 @@
             "express",
             "router",
             "authenticate",
-            "messageUpload"
+            "uploadMiddleware"
         ],
         "language": "JavaScript"
     },
@@ -1346,7 +1346,7 @@
             "router",
             "authenticate",
             "userController",
-            "messageUpload"
+            "uploadMiddleware"
         ],
         "language": "JavaScript"
     },

@@ -10,15 +10,13 @@ import {
   CheckCircle,
   UploadCloud,
   Settings as SettingsIcon,
+  Trash,
 } from "lucide-react";
-import ProfilePicture from "../components/ProfilePicture";
 
 function Settings() {
-  // Use the new user id field (prefer _id, fallback to userId)
   const { userData } = useContext(AuthContext);
-  const userId = userData._id || userData.userId;
-  
-  // Local state for profile info and form fields (only fields that updateProfile supports)
+  const userId = userData?._id || userData?.userId;
+
   const [profile, setProfile] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -26,21 +24,19 @@ function Settings() {
     bio: "",
     location: "",
     experience: "",
-    skills: "", // as a comma‑separated string
+    skills: "",
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
 
-  // Fetch profile on mount (or when userData becomes available)
   useEffect(() => {
-    if (userData) fetchProfile();
-  }, [userData]);
+    if (userId) fetchProfile();
+  }, [userId]);
 
-  // Revoke object URL on cleanup
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -64,18 +60,16 @@ function Settings() {
     }
   };
 
-  // Update profile using the server's update endpoint.
   const handleUpdateProfile = async () => {
     setIsSaving(true);
     try {
-      // Prepare payload: convert skills string into an array and experience to a number.
       const payload = {
         name: formData.name,
         tagline: formData.tagline,
         bio: formData.bio,
         location: formData.location,
         experience: parseInt(formData.experience, 10) || 0,
-        skills: formData.skills.split(",").map((s) => s.trim()).filter((s) => s),
+        skills: formData.skills.split(",").map(s => s.trim()).filter(s => s),
       };
       await axios.put(`/users/${userId}`, payload);
       fetchProfile();
@@ -85,75 +79,88 @@ function Settings() {
     setIsSaving(false);
   };
 
-  // Handle file input changes for profile picture upload.
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     setUploadError(null);
     if (!file) return;
 
-    // Validate file type and size
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
-      setUploadError("Only JPG, PNG, and WebP images are allowed");
+      setUploadError("Only JPEG, PNG, and WebP images are allowed.");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      setUploadError("File size must be less than 2MB");
+      setUploadError("File size must be under 2MB.");
       return;
     }
-    setPreviewUrl(URL.createObjectURL(file));
     setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
-  // Upload profile picture via the /attachments endpoint and then update the user.
   const handleUploadProfilePic = async () => {
     if (!selectedFile) return;
     try {
       setIsUploading(true);
-      setUploadError(null);
-      const uploadForm = new FormData();
-      uploadForm.append("type", "profile");
-      uploadForm.append("foreign_key_id", userId);
-      uploadForm.append("file", selectedFile);
+      const form = new FormData();
+      form.append("type", "profile");
+      form.append("foreign_key_id", userId);
+      form.append("file", selectedFile);
 
-      // Post the file upload (axiosInstance is already set to send credentials/csrf token)
-      const { data } = await axios.post("/attachments", uploadForm);
-      // Update the user profile with the new picture URL
+      const { data } = await axios.post("/attachments", form);
       await axios.put(`/users/${userId}`, { profile_pic_url: data.file_url });
-      // Optionally, trigger a refresh in your Navbar here if needed.
+
       fetchProfile();
       setSelectedFile(null);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     } catch (err) {
-      console.error("Upload failed:", err);
+      console.error(err);
       setUploadError(
-        err.response?.data?.error ||
-          "Failed to upload profile picture. Please try again."
+        err.response?.data?.error || "Failed to upload photo. Please try again."
       );
     } finally {
       setIsUploading(false);
     }
   };
 
-  if (!profile)
+  const handleDeleteProfilePic = async () => {
+    try {
+      await axios.delete(`/users/${userId}/profile-pic`);
+      fetchProfile();
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      setUploadError(null);
+    } catch (err) {
+      console.error(err);
+      setUploadError("Failed to remove profile picture.");
+    }
+  };
+
+  if (!profile) {
     return <div className="text-center p-8">Loading settings...</div>;
+  }
+
+  const displayImage = previewUrl
+    ? previewUrl
+    : profile.profile_pic_url
+    ? `${import.meta.env.VITE_SERVER}${profile.profile_pic_url}`
+    : "/default-avatar.png";
 
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex items-center gap-3 mb-8">
-        <SettingsIcon className="w-8 h-8 text-blue-600" />
-        <h1 className="text-3xl font-bold">Account Settings</h1>
+        <SettingsIcon className="w-8 h-8 text-pink-600" />
+        <h1 className="text-3xl font-bold text-gray-800">Account Settings</h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8">
-        {/* Sidebar Navigation */}
-        <div className="bg-white rounded-xl shadow-sm p-4 space-y-2 h-fit sticky top-6">
+        {/* Sidebar Tabs */}
+        <div className="bg-white rounded-xl shadow p-4 h-fit sticky top-6">
           <button
             onClick={() => setActiveTab("profile")}
-            className={`w-full flex items-center gap-3 p-3 rounded-lg ${
+            className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
               activeTab === "profile"
-                ? "bg-blue-50 text-blue-600"
+                ? "bg-gradient-to-r from-pink-50 to-blue-50 text-pink-600"
                 : "hover:bg-gray-50"
             }`}
           >
@@ -162,9 +169,9 @@ function Settings() {
           </button>
           <button
             onClick={() => setActiveTab("security")}
-            className={`w-full flex items-center gap-3 p-3 rounded-lg ${
+            className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
               activeTab === "security"
-                ? "bg-blue-50 text-blue-600"
+                ? "bg-gradient-to-r from-pink-50 to-blue-50 text-pink-600"
                 : "hover:bg-gray-50"
             }`}
           >
@@ -173,50 +180,50 @@ function Settings() {
           </button>
         </div>
 
-        {/* Main Content */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        {/* Main Panel */}
+        <div className="bg-white rounded-xl shadow p-6 relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-blue-50 via-pink-50 to-transparent opacity-30" />
           {activeTab === "profile" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
+              className="relative space-y-6"
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <h2 className="text-2xl font-semibold flex items-center gap-2 text-gray-800">
                   <User className="w-6 h-6" />
                   Profile Settings
                 </h2>
               </div>
 
-              {/* Profile Picture Upload */}
+              {/* Profile Picture Section */}
               <div className="flex items-center gap-6 mb-8">
                 <div className="relative group">
-                  <img
-                    crossOrigin="anonymous"
-                    src={
-                      previewUrl ||
-                      (profile.profile_pic_url
-                        ? `${import.meta.env.VITE_SERVER}${profile.profile_pic_url}`
-                        : "/default-avatar.png")
-                    }
-                    alt="Profile"
-                    className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
-                  />
-                  <label className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                    <UploadCloud className="w-6 h-6 text-white" />
-                    <input
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileChange}
-                      accept=".jpg,.jpeg,.png,.webp"
+                  <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-pink-400 via-blue-300 to-yellow-200 blur-md opacity-75 group-hover:opacity-100 transition" />
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-md">
+                    <img
+                      crossOrigin="anonymous"
+                      src={displayImage}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
                     />
-                  </label>
+                    <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                      <UploadCloud className="w-6 h-6 text-white" />
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileChange}
+                        accept=".jpg,.jpeg,.png,.webp"
+                      />
+                    </label>
+                  </div>
                 </div>
-                <div>
+
+                <div className="flex flex-col gap-2">
                   <button
                     onClick={handleUploadProfilePic}
                     disabled={!selectedFile || isUploading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-pink-600 text-white font-semibold hover:bg-pink-700 disabled:opacity-50 transition-colors"
                   >
                     {isUploading ? (
                       <>
@@ -224,21 +231,30 @@ function Settings() {
                         Uploading...
                       </>
                     ) : (
-                      "Update Photo"
+                      "Upload Photo"
                     )}
                   </button>
+                  <button
+                    onClick={handleDeleteProfilePic}
+                    disabled={!profile.profile_pic_url && !selectedFile}
+                    className="inline-flex items-center gap-2 text-gray-500 hover:text-red-600 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash className="w-4 h-4" />
+                    Remove Photo
+                  </button>
                   {uploadError && (
-                    <p className="text-sm text-red-600 mt-2">{uploadError}</p>
+                    <p className="text-sm text-red-600">{uploadError}</p>
                   )}
-                  <p className="text-sm text-gray-600 mt-2">
-                    Supported formats: JPEG, PNG, WebP (Max 2MB)
+                  <p className="text-xs text-gray-500 pt-1">
+                    Only JPG, PNG, WebP under 2MB.
                   </p>
                 </div>
               </div>
 
+              {/* Profile Form */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
                     Full Name
                   </label>
                   <input
@@ -247,11 +263,11 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
                     Tagline
                   </label>
                   <input
@@ -260,11 +276,11 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, tagline: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
                     Bio
                   </label>
                   <textarea
@@ -272,11 +288,12 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, bio: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 h-32"
+                    rows={5}
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
                     Location
                   </label>
                   <input
@@ -285,12 +302,12 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, location: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Experience (years)
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
+                    Experience (Years)
                   </label>
                   <input
                     type="number"
@@ -298,12 +315,12 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, experience: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-2">
-                    Skills (comma-separated)
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
+                    Skills (comma‑separated)
                   </label>
                   <input
                     type="text"
@@ -311,7 +328,7 @@ function Settings() {
                     onChange={(e) =>
                       setFormData({ ...formData, skills: e.target.value })
                     }
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-pink-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -319,7 +336,7 @@ function Settings() {
               <button
                 onClick={handleUpdateProfile}
                 disabled={isSaving}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                className="inline-flex items-center gap-2 px-6 py-3 mt-3 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
               >
                 {isSaving ? "Saving..." : "Save Changes"}
                 {isSaving && (
@@ -333,17 +350,19 @@ function Settings() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
+              className="relative space-y-6"
             >
-              <h2 className="text-2xl font-semibold flex items-center gap-2 mb-6">
+              <h2 className="text-2xl font-semibold flex items-center gap-2 mb-6 text-gray-800">
                 <Lock className="w-6 h-6" />
                 Security Settings
               </h2>
-              <div className="p-4 bg-white border rounded-lg">
+              <div className="p-4 bg-white border rounded-lg shadow-sm relative">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-medium">Email</h3>
-                    <p className="text-sm text-gray-600 mt-1">{profile.email}</p>
+                    <h3 className="font-medium text-gray-700">Email</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {profile.email}
+                    </p>
                   </div>
                   {profile.email_verified ? (
                     <CheckCircle className="w-6 h-6 text-green-600" />

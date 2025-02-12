@@ -947,36 +947,40 @@ exports.deleteGig = async (req, res) => {
 const User = require('../models/User'); // Add this import at the top
 
 // controllers/leaderboardController.js
+// controllers/leaderboardController.js
 exports.getLeaderboard = async (req, res) => {
-    try {
-      const { timeframe } = req.query;
-      
-      let dateFilter = {};
-      if (timeframe === 'weekly') {
-        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
-      } else if (timeframe === 'monthly') {
-        dateFilter = { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
-      }
-  
-      const users = await User.aggregate([
-        { $match: dateFilter },
-        { $sort: { xp: -1 } },
-        { $project: { name: 1, profile_pic_url: 1, xp: 1, badges: 1 } },
-        { $limit: 100 }
-      ]);
-  
-      // Add ranks
-      const rankedUsers = users.map((user, index) => ({
-        ...user,
-        rank: index + 1
-      }));
-  
-      res.json(rankedUsers);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Server error' });
+  try {
+    const { timeframe } = req.query;
+    
+    // For weekly and monthly, filter by updatedAt.
+    let dateFilter = {};
+    if (timeframe === 'weekly') {
+      dateFilter = { updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
+    } else if (timeframe === 'monthly') {
+      dateFilter = { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
     }
-  };
+    
+    // If timeframe is 'alltime', dateFilter remains {}.
+    const users = await User.aggregate([
+      { $match: dateFilter },
+      { $sort: { xp: -1 } },
+      { $project: { name: 1, profile_pic_url: 1, xp: 1, badges: 1 } },
+      { $limit: 100 }
+    ]);
+    
+    // Add rank numbers
+    const rankedUsers = users.map((user, index) => ({
+      ...user,
+      rank: index + 1
+    }));
+    
+    res.json(rankedUsers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 
 --- controllers\messageController.js ---
 // controllers/messageController.js
@@ -1789,7 +1793,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const messageUpload = multer({
+const uploadMiddleware = multer({
   storage,
   fileFilter,
   limits: {
@@ -1828,7 +1832,7 @@ const processImage = async (filePath) => {
 };
 
 module.exports = {
-  messageUpload,
+  uploadMiddleware,
   processImage
 };
 
@@ -2223,11 +2227,11 @@ const {
 } = require('../controllers/attachmentController');
 
 const { authenticate } = require('../middlewares/auth');
-const { messageUpload } = require('../middlewares/upload');
+const { uploadMiddleware } = require('../middlewares/upload');
 const { validateAttachmentUpload } = require('../middlewares/validation');
 
 // General file upload endpoint
-router.post('/', authenticate, messageUpload.single('file'), validateAttachmentUpload, uploadAttachmentGeneral);
+router.post('/', authenticate, uploadMiddleware.single('file'), validateAttachmentUpload, uploadAttachmentGeneral);
 router.get('/:attachmentId', getAttachment);
 router.delete('/:attachmentId', authenticate, deleteAttachment);
 
@@ -2379,7 +2383,7 @@ module.exports = router;
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { messageUpload } = require('../middlewares/upload');
+const { uploadMiddleware } = require('../middlewares/upload');
 const {
   getAllGigs,
   createGig,
@@ -2390,8 +2394,8 @@ const {
 } = require('../controllers/gigController');
 
 // Only change the upload middleware reference
-router.post('/', authenticate, messageUpload.single('gigImage'), createGig);
-router.put('/:gigId', authenticate, messageUpload.single('gigImage'), updateGig);
+router.post('/', authenticate, uploadMiddleware.single('gigImage'), createGig);
+router.put('/:gigId', authenticate, uploadMiddleware.single('gigImage'), updateGig);
 
 // Rest of the file remains exactly the same
 router.get('/', getAllGigs);
@@ -2526,7 +2530,7 @@ const userController = require('../controllers/userController');
 const User = require('../models/User'); // <---  IMPORT THE USER MODEL.  THIS WAS MISSING!
 
 const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
-const { messageUpload } = require('../middlewares/upload');
+const { uploadMiddleware } = require('../middlewares/upload');
 
 router.get('/me', authenticate, async (req, res) => {
     try {
@@ -2546,14 +2550,14 @@ router.get('/me', authenticate, async (req, res) => {
 // Public profile
 router.get('/:userId', userController.getPublicProfile);
 
-router.post('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
-router.put('/:userId/portfolio', authenticate, messageUpload.array('portfolio'), uploadPortfolio);
+router.post('/:userId/portfolio', authenticate, uploadMiddleware.array('portfolio'), uploadPortfolio);
+router.put('/:userId/portfolio', authenticate, uploadMiddleware.array('portfolio'), uploadPortfolio);
 
 // Update user profile
 router.put('/:userId', authenticate, userController.updateProfile);
 
 // routes/userRoutes.js
-router.post('/:userId/certifications', authenticate, messageUpload.array('certifications'), uploadCertifications);
+router.post('/:userId/certifications', authenticate, uploadMiddleware.array('certifications'), uploadCertifications);
 router.put('/:userId', authenticate, updateProfile);
 
 // In your Express routes:

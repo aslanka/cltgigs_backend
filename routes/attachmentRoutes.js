@@ -1,18 +1,26 @@
-const express = require('express');
+// routes/attachmentRoutes.js
+const express = require("express");
 const router = express.Router();
 const {
   uploadAttachmentGeneral,
   getAttachment,
-  deleteAttachment
-} = require('../controllers/attachmentController');
+  deleteAttachment,
+} = require("../controllers/attachmentController");
+const { authenticate } = require("../middlewares/auth");
+const { uploadMiddleware } = require("../middlewares/upload");
+const { validateAttachmentUpload, validateAttachmentId } = require("../middlewares/validation");
 
-const { authenticate } = require('../middlewares/auth');
-const { messageUpload } = require('../middlewares/upload');
-const { validateAttachmentUpload } = require('../middlewares/validation');
+// Use validateAttachmentUpload on POST
+router.post(
+  "/",
+  authenticate,
+  uploadMiddleware.single("file"),
+  validateAttachmentUpload,
+  uploadAttachmentGeneral
+);
 
-// General file upload endpoint
-router.post('/', authenticate, messageUpload.single('file'), validateAttachmentUpload, uploadAttachmentGeneral);
-router.get('/:attachmentId', getAttachment);
-router.delete('/:attachmentId', authenticate, deleteAttachment);
+// For GET and DELETE that expect :attachmentId in the URL
+router.get("/:attachmentId", validateAttachmentId, getAttachment);
+router.delete("/:attachmentId", authenticate, validateAttachmentId, deleteAttachment);
 
 module.exports = router;
