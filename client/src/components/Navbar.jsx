@@ -1,6 +1,19 @@
+// src/components/Navbar.jsx
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Bell, X, User, MessageSquare, Settings, LogOut, Home, Briefcase, Trophy, Zap } from 'lucide-react';
+import {
+  Menu,
+  Bell,
+  X,
+  User,
+  MessageSquare,
+  Settings,
+  LogOut,
+  Home,
+  Briefcase,
+  Trophy,
+  Zap,
+} from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import axios from '../api/axiosInstance';
 import ProfilePicture from '../components/ProfilePicture';
@@ -9,7 +22,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 
 const Navbar = () => {
-  const { token, userData, logout } = useContext(AuthContext);
+  // Removed "token" since we're now using cookie-based auth.
+  const { userData, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -21,26 +35,31 @@ const Navbar = () => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (token && userData?.userId) {
-      axios.get(`/users/${userData.userId}?refresh=${refreshKey}`)
+    // Use the _id property (from /users/me) instead of userId
+    if (userData?._id) {
+      // Fetch the latest profile data.
+      axios
+        .get(`/users/${userData._id}?refresh=${refreshKey}`)
         .then((res) => setProfile(res.data))
         .catch(console.error);
 
+      // Fetch notifications.
       fetchNotifications();
 
-      const socket = io(import.meta.env.VITE_SERVER, {
-        auth: { token },
-      });
+      // Set up the socket connection.
+      // Cookies will be automatically sent, so there's no need to pass a token.
+      const socket = io(import.meta.env.VITE_SERVER);
 
       socket.on('newNotification', (notification) => {
-        if (notification.user_id === userData.userId) {
+        // Compare using the _id property.
+        if (notification.user_id === userData._id) {
           setUnreadCount((prev) => prev + 1);
         }
       });
 
       return () => socket.disconnect();
     }
-  }, [token, userData, refreshKey]);
+  }, [userData, refreshKey]);
 
   const fetchNotifications = async () => {
     try {
@@ -92,17 +111,17 @@ const Navbar = () => {
           </Link>
 
           <div className="hidden md:flex items-center space-x-6">
-            {token ? (
+            {userData ? (
               <>
                 <div className="flex items-center space-x-4">
-                  <Link 
-                    to="/leaderboard" 
+                  <Link
+                    to="/leaderboard"
                     className="flex items-center space-x-2 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors"
                   >
                     <Trophy className="w-5 h-5 text-yellow-500" />
                     <span className="font-medium text-gray-700">Top 5</span>
                   </Link>
-                  
+
                   <button
                     onClick={() => navigate('/create-gig')}
                     className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -161,12 +180,20 @@ const Navbar = () => {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="p-2">
-                          <NavLink to="/mygigs" icon={Briefcase}>Activity</NavLink>
-                          <NavLink to="/messages" icon={MessageSquare}>Messages</NavLink>
-                          <NavLink to="/settings" icon={Settings}>Settings</NavLink>
-                          <NavLink to={`/profile/${profile?._id}`} icon={User}>Profile</NavLink>
+                          <NavLink to="/mygigs" icon={Briefcase}>
+                            Activity
+                          </NavLink>
+                          <NavLink to="/messages" icon={MessageSquare}>
+                            Messages
+                          </NavLink>
+                          <NavLink to="/settings" icon={Settings}>
+                            Settings
+                          </NavLink>
+                          <NavLink to={`/profile/${profile?._id}`} icon={User}>
+                            Profile
+                          </NavLink>
                           <button
                             onClick={handleLogout}
                             className="flex items-center space-x-3 w-full px-4 py-3 text-gray-700 hover:bg-red-50 rounded-lg transition-colors"
@@ -182,14 +209,14 @@ const Navbar = () => {
               </>
             ) : (
               <div className="flex items-center space-x-4">
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/login"
                   className="px-4 py-2 text-gray-600 hover:text-blue-600 font-medium transition-colors"
                 >
                   Sign In
                 </Link>
-                <Link 
-                  to="/register" 
+                <Link
+                  to="/register"
                   className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all"
                 >
                   Get Started
@@ -199,7 +226,7 @@ const Navbar = () => {
           </div>
 
           <div className="md:hidden flex items-center space-x-3">
-            {token && (
+            {userData && (
               <button
                 onClick={() => {
                   setNotificationsOpen(!notificationsOpen);
@@ -226,82 +253,86 @@ const Navbar = () => {
       </div>
 
       <AnimatePresence>
-      {mobileMenuOpen && (
-    <div ref={mobileMenuRef} className="md:hidden fixed inset-0 bg-white z-50">
-      <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
-        <div className="flex justify-between items-center px-4 py-3">
-          <span className="text-xl font-bold text-gray-900">Menu</span>
-          <button
-            onClick={() => setMobileMenuOpen(false)}
-            className="p-2 hover:bg-gray-50 rounded-lg"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        {token ? (
-          <>
-            <div className="px-4 py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <ProfilePicture
-                  profilePicUrl={profile?.profile_pic_url}
-                  name={profile?.name}
-                  size="12"
-                />
-                <div>
-                  <p className="font-medium text-gray-900">{profile?.name}</p>
-                  <p className="text-sm text-blue-600">{profile?.xp || 0} XP</p>
-                </div>
+        {mobileMenuOpen && (
+          <div ref={mobileMenuRef} className="md:hidden fixed inset-0 bg-white z-50">
+            <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
+              <div className="flex justify-between items-center px-4 py-3">
+                <span className="text-xl font-bold text-gray-900">Menu</span>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-2 hover:bg-gray-50 rounded-lg"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
-            </div>
 
-            <div className="p-4 space-y-2">
-              <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>
-                Home
-              </NavLink>
-              <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>
-                My Gigs
-              </NavLink>
-              <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>
-                Messages
-              </NavLink>
-              <NavLink to="/leaderboard" icon={Trophy} onClick={() => setMobileMenuOpen(false)}>
-                Leaderboard
-              </NavLink>
-              <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>
-                Settings
-              </NavLink>
-              <NavLink to={`/profile/${profile?._id}`} icon={User} onClick={() => setMobileMenuOpen(false)}>
-                Profile
-              </NavLink>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                <LogOut className="w-5 h-5" />
-                <span className="font-medium">Log Out</span>
-              </button>
+              {userData ? (
+                <>
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center space-x-3">
+                      <ProfilePicture
+                        profilePicUrl={profile?.profile_pic_url}
+                        name={profile?.name}
+                        size="12"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-900">{profile?.name}</p>
+                        <p className="text-sm text-blue-600">{profile?.xp || 0} XP</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-2">
+                    <NavLink to="/" icon={Home} onClick={() => setMobileMenuOpen(false)}>
+                      Home
+                    </NavLink>
+                    <NavLink to="/mygigs" icon={Briefcase} onClick={() => setMobileMenuOpen(false)}>
+                      My Gigs
+                    </NavLink>
+                    <NavLink to="/messages" icon={MessageSquare} onClick={() => setMobileMenuOpen(false)}>
+                      Messages
+                    </NavLink>
+                    <NavLink to="/leaderboard" icon={Trophy} onClick={() => setMobileMenuOpen(false)}>
+                      Leaderboard
+                    </NavLink>
+                    <NavLink to="/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>
+                      Settings
+                    </NavLink>
+                    <NavLink
+                      to={`/profile/${profile?._id}`}
+                      icon={User}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Profile
+                    </NavLink>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span className="font-medium">Log Out</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 space-y-4">
+                  <Link
+                    to="/login"
+                    className="block w-full px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="block w-full px-4 py-3 text-center bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+                  >
+                    Get Started
+                  </Link>
+                </div>
+              )}
             </div>
-          </>
-        ) : (
-          <div className="p-4 space-y-4">
-            <Link
-              to="/login"
-              className="block w-full px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
-            >
-              Sign In
-            </Link>
-            <Link
-              to="/register"
-              className="block w-full px-4 py-3 text-center bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
-            >
-              Get Started
-            </Link>
           </div>
         )}
-      </div>
-    </div>
-  )}
       </AnimatePresence>
 
       <Notifications

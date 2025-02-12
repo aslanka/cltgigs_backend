@@ -1,11 +1,27 @@
+// routes/userRoutes.js (Corrected)
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middlewares/auth');
+const { authenticate } = require('../middlewares/auth'); // Corrected path
 const userController = require('../controllers/userController');
-
+const User = require('../models/User'); // <---  IMPORT THE USER MODEL.  THIS WAS MISSING!
 
 const { uploadPortfolio, uploadCertifications, updateProfile} = require('../controllers/userController');
 const { messageUpload } = require('../middlewares/upload');
+
+router.get('/me', authenticate, async (req, res) => {
+    try {
+      console.log("req.user:", req.user); // <--- ADD THIS for debugging
+
+      const user = await User.findById(req.user.userId).select('-password');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 
 // Public profile
 router.get('/:userId', userController.getPublicProfile);
@@ -30,6 +46,7 @@ router.delete('/:userId/profile-pic', authenticate, userController.deleteProfile
 // Social links routes
 router.post('/:userId/social-links', authenticate, userController.addSocialLink);
 router.delete('/:userId/social-links/:index', authenticate, userController.deleteSocialLink);
+
 
 
 module.exports = router;

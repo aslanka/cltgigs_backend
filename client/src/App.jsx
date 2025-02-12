@@ -1,3 +1,4 @@
+// src/App.js (already mostly correct)
 import React from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -16,7 +17,7 @@ import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import MyBids from './pages/MyBids';
 import SearchResults from './pages/SearchResults';
-import Leaderboard from './pages/Leaderboard'; // Add this import
+import Leaderboard from './pages/Leaderboard';
 import ViewRewards from './pages/ViewRewards';
 import GamificationGuide from './pages/GamificationGuide';
 import WaitingListLandingPage from './pages/WaitingListLandingPage';
@@ -33,19 +34,20 @@ function App() {
       <Navbar />
       <div className={`h-full ${isMessagesPage ? '' : 'pt-16'}`}>
         <Routes>
+          {/* Public Routes - No changes needed here*/}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          
-          {/* Public Routes */}
           <Route path="/gigs/:gigId" element={<GigDetails />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/search" element={<SearchResults />} />
           <Route path="/waitinglist" element={<WaitingListLandingPage />} />
           <Route path="/communitycard/:userId" element={<CommunityCard />} />
           <Route path="/profile/:userId" element={<CommunityCard />} />
+          <Route path="/game-guide" element={<GamificationGuide />} />
+          <Route path="/rewards" element={<ViewRewards />} />
 
-          {/* Protected Routes */}
+          {/* Protected Routes -  No changes needed here*/}
           <Route
             path="/edit-gig/:gigId"
             element={
@@ -102,13 +104,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/game-guide" element={<GamificationGuide />} />
-          <Route
-  path="/rewards"
-  element={
-      <ViewRewards />
-  }
-/>
+
           <Route
             path="/messages/:conversationId"
             element={

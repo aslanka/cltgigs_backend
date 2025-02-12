@@ -1,3 +1,4 @@
+// controllers/authController.js
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -47,9 +48,35 @@ exports.loginUser = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    return res.json({ message: 'Login successful', token });
+    console.log(token);
+
+    // Set HttpOnly cookie WITH DOMAIN
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      sameSite: 'lax', // Prevent CSRF attacks
+      maxAge: 24 * 60 * 60 * 1000, // Cookie expiry (24 hours) - adjust as needed
+      path: '/', // Cookie available for the entire site
+      domain: '.golockedin.com', // ADD THIS LINE:  Set the domain for cross-subdomain access
+    });
+
+    console.log(token);
+    console.log(res);
+
+    return res.json({ message: 'Login successful' }); // Don't send the token in the response body
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
   }
+};
+
+exports.logoutUser = (req, res) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    domain: '.golockedin.com', // Ensure domain is cleared as well
+  });
+  res.status(200).json({ message: 'Logged out successfully' });
 };

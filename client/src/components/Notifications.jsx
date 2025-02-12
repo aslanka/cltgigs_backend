@@ -1,3 +1,4 @@
+// src/components/Notifications.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
@@ -14,22 +15,23 @@ import {
 } from 'react-icons/fi';
 
 const Notifications = ({ isOpen, onClose, refreshNotifications }) => {
-  const { token } = useContext(AuthContext);
+  // Use userData (cookie-based auth) instead of token
+  const { userData } = useContext(AuthContext);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [userPoints, setUserPoints] = useState(1420); // Connect to your backend
+  const [userPoints, setUserPoints] = useState(1420); // Connect to your backend as needed
   const navigate = useNavigate();
 
-  // Mock achievements data - replace with real API call
+  // Mock achievements data - replace with real API call if available
   const [achievements] = useState([
     { id: 1, name: 'Explorer', progress: 80, target: 100 },
     { id: 2, name: 'Socializer', progress: 45, target: 100 },
   ]);
 
   useEffect(() => {
-    if (!token || !isOpen) return;
+    if (!userData || !isOpen) return;
     fetchNotifications();
-  }, [token, isOpen]);
+  }, [userData, isOpen]);
 
   const fetchNotifications = async () => {
     try {
@@ -120,12 +122,12 @@ const Notifications = ({ isOpen, onClose, refreshNotifications }) => {
               <div key={achievement.id}>
                 <div className="flex justify-between text-sm mb-1">
                   <span>{achievement.name}</span>
-                  <span>{Math.round((achievement.progress/achievement.target)*100)}%</span>
+                  <span>{Math.round((achievement.progress / achievement.target) * 100)}%</span>
                 </div>
                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-yellow-300 transition-all duration-500"
-                    style={{ width: `${(achievement.progress/achievement.target)*100}%` }}
+                    style={{ width: `${(achievement.progress / achievement.target) * 100}%` }}
                   />
                 </div>
               </div>
