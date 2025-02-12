@@ -1,24 +1,23 @@
+// src/components/CommunityCard.jsx
 import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from '../api/axiosInstance';
 import { AuthContext } from '../context/AuthContext';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { 
-  Star, Edit, Globe, Briefcase, CheckCircle, 
-  MessageCircle, X, Plus, Sparkles, Github, 
-  Linkedin, Twitter, Youtube 
+import {
+  Star, Edit, Globe, Briefcase, CheckCircle,
+  MessageCircle, X, Plus, Sparkles, Github,
+  Linkedin, Twitter, Youtube, PhoneCall, Mail
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ProfilePicture from '../components/ProfilePicture';
 import RatingChart from '../components/RatingChart';
-import Attachment from '../components/Attachment';
 import {
   ProfileHeader,
   SocialLinks,
   BioSection,
   PortfolioSection,
   ReviewsSection,
-  socialIcons,
   MAX_BIO_LENGTH,
   MAX_PORTFOLIO_ITEMS,
   ACCEPTED_FILE_TYPES,
@@ -27,8 +26,9 @@ import {
 
 const CommunityCard = () => {
   const { userId } = useParams();
-  const { token, userData } = useContext(AuthContext);
+  const { userData } = useContext(AuthContext);
   const navigate = useNavigate();
+
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
@@ -42,23 +42,25 @@ const CommunityCard = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const averageRating = useMemo(() => 
-    reviews.length > 0 
-      ? reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length 
-      : 0
-  , [reviews]);
+  // Calculate the average rating from the latest reviews
+  const averageRating = useMemo(() =>
+    reviews.length > 0
+      ? reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length
+      : 0,
+    [reviews]
+  );
 
+  // Load profile data, reviews and block status (if logged in)
   const loadData = useCallback(async () => {
     try {
       const [profileRes, reviewsRes] = await Promise.all([
         axios.get(`/users/${userId}`),
         axios.get(`/reviews/user/${userId}?sort=-createdAt&limit=10`)
       ]);
-      
-      if (token) {
-        const blockStatusRes = await axios.get(`/users/${userId}/block-status`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+
+      // Only check block status if the viewer is logged in
+      if (userData) {
+        const blockStatusRes = await axios.get(`/users/${userId}/block-status`);
         setIsBlocked(blockStatusRes.data.isBlocked);
       }
 
@@ -68,18 +70,27 @@ const CommunityCard = () => {
       console.error(err);
       toast.error('Failed to load profile data');
     }
-  }, [userId, token]);
+  }, [userId, userData]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  // Submit a new review
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
-    if (userData?.userId === userId) {
+    // Ensure the user is logged in
+    if (!userData) {
+      setError("Please log in to leave a review.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Prevent reviewing yourself
+    if (userData?._id === userId) {
       setError("You cannot review yourself.");
       setIsSubmitting(false);
       return;
@@ -92,10 +103,7 @@ const CommunityCard = () => {
     }
 
     try {
-      const res = await axios.post(`/reviews/user/${userId}`, newReview, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const res = await axios.post(`/reviews/user/${userId}`, newReview);
       setReviews([res.data, ...reviews]);
       setNewReview({ rating: 0, comment: '' });
       toast.success('Review submitted successfully!');
@@ -107,10 +115,11 @@ const CommunityCard = () => {
     }
   };
 
+  // Handle portfolio file upload
   const handlePortfolioUpload = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     if (!portfolioFile) {
       toast.error('Please select a file');
       setIsSubmitting(false);
@@ -131,13 +140,10 @@ const CommunityCard = () => {
 
     const formData = new FormData();
     formData.append('portfolio', portfolioFile);
-    
+
     try {
       const res = await axios.put(`/users/${userId}/portfolio`, formData, {
-        headers: { 
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${token}`
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       setProfile({ ...profile, portfolio: res.data.portfolio });
       setIsUploadingPortfolio(false);
@@ -151,30 +157,27 @@ const CommunityCard = () => {
     }
   };
 
+  // Delete a portfolio item
   const handleDeletePortfolioItem = async (fileUrl) => {
     try {
       await axios.delete(`/users/${userId}/portfolio`, {
-        headers: { Authorization: `Bearer ${token}` },
         data: { fileUrl }
       });
-      
       setProfile(prev => ({
         ...prev,
         portfolio: prev.portfolio.filter(item => item !== fileUrl)
       }));
-      
       toast.success('Portfolio item removed');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error removing item');
     }
   };
 
+  // Save updated profile information
   const handleSaveProfile = async () => {
     setIsSubmitting(true);
     try {
-      await axios.put(`/users/${userId}`, profile, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.put(`/users/${userId}`, profile);
       toast.success('Profile updated successfully');
       setIsEditing(false);
       loadData();
@@ -185,17 +188,14 @@ const CommunityCard = () => {
     }
   };
 
+  // Add a new social media link
   const handleAddLink = async () => {
     try {
-      const response = await axios.post(`/users/${userId}/social-links`, newLink, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const response = await axios.post(`/users/${userId}/social-links`, newLink);
       setProfile(prev => ({
         ...prev,
         social_media_links: [...prev.social_media_links, response.data]
       }));
-      
       setNewLink({ type: 'website', url: '' });
       toast.success('Link added successfully');
     } catch (err) {
@@ -203,28 +203,26 @@ const CommunityCard = () => {
     }
   };
 
+  // Delete an existing social media link by its index
   const handleDeleteLink = async (index) => {
     try {
-      await axios.delete(`/users/${userId}/social-links/${index}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      await axios.delete(`/users/${userId}/social-links/${index}`);
       setProfile(prev => ({
         ...prev,
         social_media_links: prev.social_media_links.filter((_, i) => i !== index)
       }));
-      
       toast.success('Link removed');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error removing link');
     }
   };
+
+  // Handle contacting the profile owner
   const handleContact = () => {
-    if (!token) {
+    if (!userData) {
       navigate('/login');
       return;
     }
-    
     if (isBlocked) {
       toast.error('You cannot contact this user');
     } else {
@@ -232,46 +230,61 @@ const CommunityCard = () => {
     }
   };
 
-  if (!profile) return (
-    <div className="flex justify-center items-center h-screen">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="grid grid-cols-1 md:grid-cols-4 gap-8 w-full max-w-6xl px-4"
-      >
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
-        ))}
-      </motion.div>
-    </div>
-  );
+  // Show a loading skeleton until the profile loads
+  if (!profile)
+    return (
+      <div className="flex justify-center items-center h-screen bg-gray-50">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid grid-cols-1 md:grid-cols-4 gap-8 w-full max-w-6xl px-4"
+        >
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
+          ))}
+        </motion.div>
+      </div>
+    );
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gray-50"
     >
       {/* Profile Header Section */}
-<div className="relative bg-gradient-to-r from-blue-600 to-purple-600 h-64 sm:h-72">
-  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <motion.div
-      className="absolute -bottom-20 left-1/2 transform -translate-x-1/2"
-      layoutId="profilePicture"
-    >
-      <div className="relative group">
-        <div className="absolute inset-0 bg-white/20 rounded-full filter blur-2xl animate-pulse"></div>
-        <ProfilePicture 
-          profilePicUrl={profile.profile_pic_url} 
-          name={profile.name}
-          className="w-48 h-48 sm:w-56 sm:h-56 rounded-full transform transition-transform duration-300 hover:scale-105"
-        />
+      <div className="relative bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-md">
+        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <motion.div
+              layoutId="profilePicture"
+              className="rounded-full overflow-hidden shadow-lg border-4 border-white"
+            >
+              <ProfilePicture
+                profilePicUrl={profile.profile_pic_url}
+                name={profile.name}
+                className="w-24 h-24 sm:w-32 sm:h-32"
+              />
+            </motion.div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold">{profile.name}</h1>
+              <p className="text-gray-100 text-sm sm:text-base">
+                {profile.title || 'Gig Provider'}
+              </p>
+            </div>
+          </div>
+          {userData?._id === userId && (
+            <motion.button
+              onClick={() => setIsEditing(!isEditing)}
+              className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-full transition-colors"
+            >
+              {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+            </motion.button>
+          )}
+        </div>
       </div>
-    </motion.div>
-  </div>
-</div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <LayoutGroup>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Left Column */}
@@ -283,7 +296,32 @@ const CommunityCard = () => {
                 userData={userData}
                 setProfile={setProfile}
               />
-              
+
+              <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
+                  <Mail className="w-5 h-5 text-blue-500" /> 
+                  <span>Contact Information</span>
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2 text-gray-600">
+                    <PhoneCall className="w-4 h-4" />
+                    <span>{profile.phone || 'Not provided'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-gray-600">
+                    <Globe className="w-4 h-4" />
+                    <span>{profile.website || 'Not provided'}</span>
+                  </div>
+                </div>
+                {userData?._id !== userId && (
+                  <motion.button
+                    onClick={handleContact}
+                    className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-full transition-colors"
+                  >
+                    Contact Me
+                  </motion.button>
+                )}
+              </div>
+
               <SocialLinks
                 profile={profile}
                 isEditingLinks={isEditingLinks}
@@ -321,7 +359,6 @@ const CommunityCard = () => {
                 error={error}
                 isSubmitting={isSubmitting}
                 handleReviewSubmit={handleReviewSubmit}
-                token={token}
                 userData={userData}
                 isBlocked={isBlocked}
                 userId={userId}
@@ -331,32 +368,6 @@ const CommunityCard = () => {
           </div>
         </LayoutGroup>
       </div>
-
-      {/* Floating Action Buttons */}
-      {userData?.userId === userId && (
-        <motion.div 
-          className="fixed bottom-8 right-8 flex gap-4"
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
-        >
-          {isEditing && (
-            <button
-              onClick={handleSaveProfile}
-              disabled={isSubmitting}
-              className="bg-blue-600 text-white px-6 py-3 rounded-full shadow-xl hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              <CheckCircle className="w-5 h-5" />
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </button>
-          )}
-          <button
-            onClick={handleContact}
-            className="bg-blue-600 text-white p-4 rounded-full shadow-xl hover:bg-blue-700 transition-all"
-          >
-            <MessageCircle className="w-6 h-6" />
-          </button>
-        </motion.div>
-      )}
 
       {/* Portfolio Upload Modal */}
       <AnimatePresence>
@@ -377,6 +388,7 @@ const CommunityCard = () => {
                 <button
                   onClick={() => setIsUploadingPortfolio(false)}
                   className="p-2 hover:bg-gray-100 rounded-lg"
+                  aria-label="Close upload modal"
                 >
                   <X className="w-5 h-5" />
                 </button>

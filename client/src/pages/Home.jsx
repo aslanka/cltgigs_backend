@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from '../api/axiosInstance';
+import axios from '../api/axiosInstance'; // Make sure you are using axiosInstance for API requests
 import { Search, MapPin, Flag, Filter, ClipboardList, ChevronLeft, ChevronRight, Tag, Users, Calendar, DollarSign, Heart, Star, Award, Rocket } from 'lucide-react';
 import Mascot from '../assets/mascot.svg';
 import { Helmet } from 'react-helmet';
@@ -10,11 +10,11 @@ import ReportButton from '../components/ReportButton'
 
 // Optimized Skeleton Loading Component with aria labels
 const SkeletonCard = React.memo(() => (
-  <motion.div 
+  <motion.div
     role="status"
     aria-label="Loading gig..."
-    initial={{ opacity: 0 }} 
-    animate={{ opacity: 1 }} 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
     className="animate-pulse p-4 rounded-2xl bg-white shadow-sm"
   >
     <div className="h-48 bg-gray-200 rounded-xl mb-4" aria-hidden="true"></div>
@@ -37,7 +37,7 @@ const categoryDetails = {
   'default': { emoji: '💼', gradient: 'from-gray-100 to-gray-50' }
 };
 
-const getCategoryDetails = (category) => 
+const getCategoryDetails = (category) =>
   categoryDetails[category] || categoryDetails.default;
 
 const Home = () => {
@@ -60,7 +60,7 @@ const Home = () => {
   });
 
   const limit = 10;
-  const { token } = useContext(AuthContext);
+  const { userData } = useContext(AuthContext); // Changed from token to userData
   const navigate = useNavigate();
   const [selectedContent, setSelectedContent] = useState(null);
 
@@ -84,7 +84,7 @@ const Home = () => {
   // Memoized fetch function
   const fetchGigs = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
-    
+
     try {
       const params = {
         searchTerm: state.searchTerm,
@@ -102,12 +102,12 @@ const Home = () => {
         ...(state.serviceOffered && { serviceOffered: true }),
         ...(state.tags && { tags: state.tags }),
       };
-  
-      const res = await axios.get('/gigs', { 
+
+      const res = await axios.get('/gigs', { // Use axiosInstance here
         params,
         headers: { 'Cache-Control': 'max-age=300' }
       });
-  
+
       setState(prev => ({
         ...prev,
         gigs: res.data?.gigs || [],
@@ -124,27 +124,27 @@ const Home = () => {
     const debounceTimer = setTimeout(fetchGigs, 300);
     return () => clearTimeout(debounceTimer);
   }, [
-    state.searchTerm, 
-    state.category, 
-    state.sortBy, 
-    state.page, 
-    state.zipCode, 
-    state.distance, 
-    state.minBudget, 
-    state.maxBudget, 
-    state.isVolunteer, 
+    state.searchTerm,
+    state.category,
+    state.sortBy,
+    state.page,
+    state.zipCode,
+    state.distance,
+    state.minBudget,
+    state.maxBudget,
+    state.isVolunteer,
     state.serviceOffered,
     state.tags
   ]);
 
   const handleCreateGig = useCallback(() => {
-    if (!token) {
+    if (!userData) { // Changed from !token to !userData
       alert('You must be logged in to create a gig.');
       navigate('/login');
       return;
     }
     navigate('/create-gig');
-  }, [token, navigate]);
+  }, [userData, navigate]); // Changed from token to userData
 
   const totalPages = Math.ceil(state.totalGigs / limit);
 
@@ -163,19 +163,19 @@ const Home = () => {
       </Helmet>
 
       {/* Header with ARIA landmarks */}
-      <header 
+      <header
         role="banner"
         className="relative bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-xl"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center mb-8 space-y-6 md:space-y-0">
             <div className="flex items-center space-x-4">
-              <img 
-                src={Mascot} 
-                alt="CharlotteGigs Mascot" 
+              <img
+                src={Mascot}
+                alt="CharlotteGigs Mascot"
                 className="h-16 w-16 animate-bounce"
                 role="img"
-                aria-label="Website mascot" 
+                aria-label="Website mascot"
               />
               <div>
                 <h1 className="text-4xl font-bold">CharlotteGigs</h1>
@@ -184,7 +184,7 @@ const Home = () => {
                 </p>
               </div>
             </div>
-            <motion.button 
+            <motion.button
               aria-label="Post a new gig"
               role="button"
               whileHover={{ scale: 1.05 }}
@@ -197,7 +197,7 @@ const Home = () => {
           </div>
 
           {/* Search Section */}
-          <SearchSection 
+          <SearchSection
             state={state}
             setState={setState}
             handleCreateGig={handleCreateGig}
@@ -211,14 +211,14 @@ const Home = () => {
 
       {/* Main Content */}
       <main role="main" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <FiltersAndLeaderboard 
+        <FiltersAndLeaderboard
           state={state}
           setState={setState}
         />
 
         {/* Gig Cards Grid */}
-        <div 
-          role="region" 
+        <div
+          role="region"
           aria-label="Gig listings"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
         >
@@ -229,7 +229,7 @@ const Home = () => {
               ))
             ) : (
               state.gigs.map((gig) => (
-                <GigCard 
+                <GigCard
                   key={gig._id}
                   gig={gig}
                   handleCreateGig={handleCreateGig}
@@ -240,7 +240,7 @@ const Home = () => {
           </AnimatePresence>
         </div>
 
-        <Pagination 
+        <Pagination
           state={state}
           setState={setState}
           totalPages={totalPages}
@@ -272,7 +272,7 @@ const Home = () => {
 
 // Extracted Search Section Component
 const SearchSection = ({ state, setState, fetchGigs }) => (
-  <motion.div 
+  <motion.div
     role="search"
     initial={{ y: 20, opacity: 0 }}
     animate={{ y: 0, opacity: 1 }}
@@ -296,7 +296,7 @@ const SearchSection = ({ state, setState, fetchGigs }) => (
           aria-label="Search gigs"
         />
       </div>
-      
+
       <div className="flex gap-4">
         <div className="relative flex-1">
           <label htmlFor="zipCode" className="sr-only">Zip code</label>
@@ -336,7 +336,7 @@ const SearchSection = ({ state, setState, fetchGigs }) => (
       </button>
     </div>
 
-    <AdvancedFilters 
+    <AdvancedFilters
       state={state}
       setState={setState}
     />
@@ -355,7 +355,7 @@ const AdvancedFilters = ({ state, setState }) => (
       <span className="font-medium">Advanced Filters</span>
       <ChevronRight className={`transition-transform ${state.showAdvanced ? 'rotate-90' : ''}`} />
     </button>
-    
+
     <AnimatePresence>
       {state.showAdvanced && (
         <motion.div
@@ -373,9 +373,9 @@ const AdvancedFilters = ({ state, setState }) => (
       placeholder="Min Budget"
       className="w-full sm:w-1/2 px-4 py-2 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
       value={state.minBudget || ''}
-      onChange={(e) => setState(prev => ({ 
-        ...prev, 
-        minBudget: e.target.value === '' ? '' : Number(e.target.value) 
+      onChange={(e) => setState(prev => ({
+        ...prev,
+        minBudget: e.target.value === '' ? '' : Number(e.target.value)
       }))}
       aria-label="Minimum budget"
     />
@@ -384,9 +384,9 @@ const AdvancedFilters = ({ state, setState }) => (
       placeholder="Max Budget"
       className="w-full sm:w-1/2 px-4 py-2 bg-white/10 rounded-xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white"
       value={state.maxBudget || ''}
-      onChange={(e) => setState(prev => ({ 
-        ...prev, 
-        maxBudget: e.target.value === '' ? '' : Number(e.target.value) 
+      onChange={(e) => setState(prev => ({
+        ...prev,
+        maxBudget: e.target.value === '' ? '' : Number(e.target.value)
       }))}
       aria-label="Maximum budget"
     />
@@ -396,9 +396,9 @@ const AdvancedFilters = ({ state, setState }) => (
     type="checkbox"
     id="serviceOffered"
     checked={state.serviceOffered}
-    onChange={(e) => setState(prev => ({ 
-      ...prev, 
-      serviceOffered: e.target.checked 
+    onChange={(e) => setState(prev => ({
+      ...prev,
+      serviceOffered: e.target.checked
     }))}
     className="w-4 h-4 rounded border-white/20 text-blue-600 focus:ring-blue-500"
     aria-label="Service offered only"
@@ -432,13 +432,13 @@ const AdvancedFilters = ({ state, setState }) => (
       )}
     </AnimatePresence>
   </div>
-  
+
 );
 
 // Extracted Gamification Banner Component
 const GamificationBanner = () => (
-  <div 
-    role="region" 
+  <div
+    role="region"
     aria-label="Gamification status"
     className="bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4"
   >
@@ -481,8 +481,8 @@ const FiltersAndLeaderboard = ({ state, setState }) => (
       </select>
     </div>
 
-    <Link 
-      to="/leaderboard" 
+    <Link
+      to="/leaderboard"
       className="bg-white p-3 rounded-xl shadow-sm hover:bg-gray-50 transition-colors"
       aria-label="View leaderboard"
     >
@@ -501,8 +501,8 @@ const GigCard = React.memo(({ gig, handleCreateGig, openReportModal }) => {
 
   // Dynamic classes based on service type
   const cardClasses = `group rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col relative ${
-    isService 
-      ? 'border-2 border-blue-500 bg-gradient-to-br from-blue-50 to-white' 
+    isService
+      ? 'border-2 border-blue-500 bg-gradient-to-br from-blue-50 to-white'
       : 'border border-gray-100 bg-white'
   }`;
 
@@ -531,7 +531,7 @@ const GigCard = React.memo(({ gig, handleCreateGig, openReportModal }) => {
         )}
 
         {/* Report Button */}
-        <button 
+        <button
           className="absolute top-3 right-3 z-10 text-gray-400 hover:text-red-500 transition-colors"
           onClick={(e) => {
             e.preventDefault();
@@ -554,7 +554,7 @@ const GigCard = React.memo(({ gig, handleCreateGig, openReportModal }) => {
               loading="lazy"
             />
           ) : (
-            <span 
+            <span
               className="text-7xl transform transition group-hover:scale-110"
               role="img"
               aria-label={gig.category}
@@ -607,14 +607,14 @@ const GigCard = React.memo(({ gig, handleCreateGig, openReportModal }) => {
           {/* Progress Bar (only for regular gigs) */}
           {!isService && (
             <div className="mb-3">
-              <div 
+              <div
                 className="h-2 bg-gray-200 rounded-full"
                 role="progressbar"
                 aria-valuenow={Math.min(gig.bidCount || 0, 10) * 10}
                 aria-valuemin="0"
                 aria-valuemax="100"
               >
-                <div 
+                <div
                   className="h-2 bg-blue-500 rounded-full transition-all"
                   style={{ width: `${Math.min(gig.bidCount || 0, 10) * 10}%` }}
                 />
@@ -664,7 +664,7 @@ const GigCard = React.memo(({ gig, handleCreateGig, openReportModal }) => {
 
 // Extracted Pagination Component
 const Pagination = ({ state, setState, totalPages }) => (
-  <div 
+  <div
     role="navigation"
     aria-label="Pagination"
     className="flex justify-center items-center space-x-4 mt-12"
@@ -679,7 +679,7 @@ const Pagination = ({ state, setState, totalPages }) => (
       <ChevronLeft className="w-5 h-5" aria-hidden="true" />
       <span className="font-medium">Previous</span>
     </motion.button>
-    
+
     <div className="flex items-center space-x-2">
       {Array.from({ length: totalPages }, (_, i) => (
         <button

@@ -1,6 +1,7 @@
+// src/components/GigDetails.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import axios from '../api/axiosInstance';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import DOMPurify from 'dompurify';
 import { motion } from 'framer-motion';
@@ -36,7 +37,7 @@ function GigDetails() {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const { token, userData } = useContext(AuthContext);
+  const { userData } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // Time formatting utilities
@@ -48,14 +49,14 @@ function GigDetails() {
   const formatMemberSince = (dateString) => {
     if (!dateString) return 'Member since unknown date';
     const joinDate = new Date(dateString);
-    return isNaN(joinDate.getTime()) 
+    return isNaN(joinDate.getTime())
       ? 'Member since unknown date'
       : `Member since ${joinDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`;
   };
 
   // Bookmark functionality
   const handleBookmark = async () => {
-    if (!token) {
+    if (!userData) {
       navigate('/login', { state: { from: `/gigs/${gigId}` } });
       return;
     }
@@ -75,15 +76,17 @@ function GigDetails() {
       try {
         const [gigRes, bookmarksRes] = await Promise.all([
           axios.get(`/gigs/${gigId}`),
-          token ? axios.get(`/bookmarks/check/${gigId}`) : Promise.resolve({ data: { isBookmarked: false } }),
+          userData
+            ? axios.get(`/bookmarks/check/${gigId}`)
+            : Promise.resolve({ data: { isBookmarked: false } }),
         ]);
 
         setGig(gigRes.data.gig);
         setAttachments(gigRes.data.attachments);
         setIsBookmarked(bookmarksRes.data.isBookmarked);
 
-        // Only fetch bids if logged in
-        if (token) {
+        // Only fetch bids if user is logged in.
+        if (userData) {
           const bidsRes = await axios.get(`/bids/${gigId}`);
           setBids(bidsRes.data);
         }
@@ -95,12 +98,12 @@ function GigDetails() {
     };
 
     fetchGigData();
-  }, [gigId, token]);
+  }, [gigId, userData]);
 
   // Bid handling
   const handlePlaceBid = async (e) => {
     e.preventDefault();
-    if (!token) {
+    if (!userData) {
       navigate('/login', { state: { from: `/gigs/${gigId}`, formData: { bidAmount, bidMessage } } });
       return;
     }
@@ -115,19 +118,22 @@ function GigDetails() {
       const res = await axios.post('/bids', {
         gig_id: gigId,
         amount: parseFloat(bidAmount),
-        message: bidMessage
+        message: bidMessage,
       });
 
-      setBids(prev => [...prev, {
-        ...res.data.newBid,
-        user_id: {
-          _id: userData.userId,
-          name: userData.name,
-          profile_pic_url: userData.profilePicUrl,
-          rating: userData.rating
-        }
-      }]);
-      
+      setBids((prev) => [
+        ...prev,
+        {
+          ...res.data.newBid,
+          user_id: {
+            _id: userData._id,
+            name: userData.name,
+            profile_pic_url: userData.profilePicUrl,
+            rating: userData.rating,
+          },
+        },
+      ]);
+
       setBidAmount('');
       setBidMessage('');
       setError(null);
@@ -140,7 +146,7 @@ function GigDetails() {
 
   // Message user functionality
   const startConversation = async () => {
-    if (!token) {
+    if (!userData) {
       navigate('/login', { state: { from: `/gigs/${gigId}` } });
       return;
     }
@@ -157,7 +163,9 @@ function GigDetails() {
     return [...Array(5)].map((_, i) => (
       <Star
         key={i}
-        className={`w-5 h-5 ${i < Math.floor(rating ?? 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+        className={`w-5 h-5 ${
+          i < Math.floor(rating ?? 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'
+        }`}
       />
     ));
   };
@@ -186,8 +194,9 @@ function GigDetails() {
 
   if (!gig) return <div className="text-center p-8">Gig not found</div>;
 
-  const isOwner = userData?.userId === gig?.user_id?._id;
-  const userBid = token ? bids.find(bid => bid.user_id?._id === userData?.userId) : null;
+  // Determine if the current user is the owner of the gig.
+  const isOwner = userData && userData._id === gig?.user_id?._id;
+  const userBid = userData ? bids.find((bid) => bid.user_id?._id === userData._id) : null;
 
   return (
     <motion.main
@@ -196,7 +205,7 @@ function GigDetails() {
       transition={{ duration: 0.3 }}
       className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
     >
-      {/* Action Buttons */}
+      {/* Floating Action Buttons */}
       <div className="fixed right-6 bottom-6 space-y-3 z-50">
         <motion.button
           whileHover={{ scale: 1.05 }}
@@ -229,7 +238,14 @@ function GigDetails() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
               <div className="space-y-2">
-                <h1 className="text-3xl font-bold text-gray-900">{gig.title}</h1>
+                <div className="flex items-center">
+                  <h1 className="text-3xl font-bold text-gray-900">{gig.title}</h1>
+                  {isOwner && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Your Gig
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 text-gray-500">
                   <Calendar className="w-5 h-5" />
                   <span>{formatPostedTime(gig.createdAt)}</span>
@@ -238,7 +254,7 @@ function GigDetails() {
               {!isOwner && (
                 <div className="flex items-center gap-2 bg-green-100 px-4 py-2 rounded-full">
                   <Award className="w-5 h-5 text-green-600" />
-                  <span className="text-green-700 font-medium">Earn 250 XP</span>
+                  <span className="text-green-700 font-medium">Earn 250 XP to bid</span>
                 </div>
               )}
             </div>
@@ -255,13 +271,15 @@ function GigDetails() {
                 {attachments.length > 1 && (
                   <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => setCurrentImageIndex(prev => (prev - 1 + attachments.length) % attachments.length)}
+                      onClick={() =>
+                        setCurrentImageIndex((prev) => (prev - 1 + attachments.length) % attachments.length)
+                      }
                       className="p-2 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
                     >
                       <ChevronLeft className="w-6 h-6" />
                     </button>
                     <button
-                      onClick={() => setCurrentImageIndex(prev => (prev + 1) % attachments.length)}
+                      onClick={() => setCurrentImageIndex((prev) => (prev + 1) % attachments.length)}
                       className="p-2 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
                     >
                       <ChevronRight className="w-6 h-6" />
@@ -296,7 +314,9 @@ function GigDetails() {
                   <div>
                     <p className="text-sm text-gray-500">Budget Range</p>
                     <p className="font-medium">
-                      {gig.is_volunteer ? 'Volunteer Position' : `$${gig.budget_range_min} - $${gig.budget_range_max}`}
+                      {gig.is_volunteer
+                        ? 'Volunteer Position'
+                        : `$${gig.budget_range_min} - $${gig.budget_range_max}`}
                     </p>
                   </div>
                 </div>
@@ -318,7 +338,7 @@ function GigDetails() {
                   <Shield className="w-6 h-6 text-blue-600" />
                   <div>
                     <p className="text-sm text-gray-500">Safety Status</p>
-                    <p className="font-medium">Verified & Protected</p>
+                    <p className="font-medium">Verified &amp; Protected</p>
                   </div>
                 </div>
               </div>
@@ -354,9 +374,10 @@ function GigDetails() {
         {/* Sidebar */}
         <div className="lg:col-span-1">
           <div className="sticky top-8 space-y-6">
-            {!isOwner && (
+            {/* Show bid form only if not the owner */}
+            {!isOwner ? (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                {token ? (
+                {userData ? (
                   userBid ? (
                     <div className="space-y-4">
                       <h2 className="text-xl font-semibold text-gray-900">Your Bid</h2>
@@ -366,14 +387,18 @@ function GigDetails() {
                       </div>
                       <div>
                         <p className="text-sm text-gray-500 mb-1">Your Message</p>
-                        <p className="text-gray-700 whitespace-pre-wrap">{userBid.message || 'No message provided'}</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">
+                          {userBid.message || 'No message provided'}
+                        </p>
                       </div>
                     </div>
                   ) : (
                     <form onSubmit={handlePlaceBid} className="space-y-4">
                       <h2 className="text-xl font-semibold text-gray-900">Place Your Bid</h2>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount ($)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Bid Amount ($)
+                        </label>
                         <input
                           type="number"
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -385,7 +410,9 @@ function GigDetails() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Message to Poster</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Message to Poster
+                        </label>
                         <textarea
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-32"
                           value={bidMessage}
@@ -405,7 +432,9 @@ function GigDetails() {
                 ) : (
                   <div className="text-center space-y-4">
                     <h3 className="text-xl font-semibold">Want to bid on this gig?</h3>
-                    <p className="text-gray-600">Join our community to submit your proposal and connect with clients.</p>
+                    <p className="text-gray-600">
+                      Join our community to submit your proposal and connect with clients.
+                    </p>
                     <div className="space-y-3">
                       <button
                         onClick={() => navigate('/login', { state: { from: `/gigs/${gigId}` } })}
@@ -426,6 +455,19 @@ function GigDetails() {
                   </div>
                 )}
               </div>
+            ) : (
+              // For gig owners, show a card that indicates ownership and provides a link to edit the gig.
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 text-center">
+                <h2 className="text-xl font-semibold text-gray-900">You are the gig owner</h2>
+                <p className="text-sm text-gray-600 mt-2">Manage your gig or review bids.</p>
+                <button
+                  onClick={() => navigate(`/edit-gig/${gigId}`)}
+                  className="mt-4 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Edit className="w-5 h-5" />
+                  Edit Gig
+                </button>
+              </div>
             )}
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4">
@@ -440,7 +482,9 @@ function GigDetails() {
                   <h3 className="text-lg font-bold text-gray-900">{gig.user_id.name}</h3>
                   <div className="flex items-center gap-2">
                     {renderRatingStars(gig.user_id.rating)}
-                    <span className="text-sm text-gray-500">({gig.user_id.reviews?.length || 0} reviews)</span>
+                    <span className="text-sm text-gray-500">
+                      ({gig.user_id.reviews?.length || 0} reviews)
+                    </span>
                   </div>
                 </div>
               </div>
@@ -459,11 +503,15 @@ function GigDetails() {
               </div>
 
               <button
-                onClick={() => token ? startConversation() : navigate('/login', { state: { from: `/gigs/${gigId}` } })}
+                onClick={() =>
+                  userData
+                    ? startConversation()
+                    : navigate('/login', { state: { from: `/gigs/${gigId}` } })
+                }
                 className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
               >
                 <MessageCircle className="w-5 h-5" />
-                {token ? 'Contact User' : 'Login to Contact'}
+                {userData ? 'Contact User' : 'Login to Contact'}
               </button>
             </div>
           </div>

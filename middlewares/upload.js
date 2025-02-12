@@ -1,72 +1,97 @@
+// middlewares/upload.js
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
-const fs = require('fs');
-const fsPromises = fs.promises;
+const fs = require('fs').promises;
+const crypto = require('crypto');
 
-// Create a disk storage to store original files temporarily
+const generateSafeName = bytes => 
+  crypto.randomBytes(bytes).toString('hex');
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Make sure this folder exists
+  destination: async (req, file, cb) => {
+    const uploadDir = 'uploads/';
+    await fs.mkdir(uploadDir, { recursive: true });
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname).toLowerCase();
+    const filename = `${generateSafeName(16)}${ext}`;
+    cb(null, filename);
   }
 });
 
-// Filter to only allow images for gig attachments
-function gigFileFilter(req, file, cb) {
-  if (!file.mimetype.startsWith('image/')) {
-    return cb(new Error('Only images are allowed for gig attachments'), false);
+const fileTypeValidations = {
+  profile: {
+    mime: /^image\/(jpeg|png|webp)$/,
+    ext: /\.(jpe?g|png|webp)$/i,
+    maxSize: 2 * 1024 * 1024 // 2MB
+  },
+  general: {
+    mime: /^(image|application\/pdf|text\/plain)/,
+    ext: /\.(jpe?g|png|pdf|txt)$/i,
+    maxSize: 5 * 1024 * 1024 // 5MB
   }
-  cb(null, true);
-}
+};
 
-function generalFileFilter(req, file, cb) {
-  // For message attachments we can allow any file type, or implement more checks
-  cb(null, true);
-}
+const fileFilter = (req, file, cb) => {
+  try {
+    const fileType = req.body.type === 'profile' ? 'profile' : 'general';
+    const { mime, ext, maxSize } = fileTypeValidations[fileType];
 
-const gigUpload = multer({
-  storage: storage,
-  fileFilter: gigFileFilter
-});
+    if (!mime.test(file.mimetype) || !ext.test(file.originalname)) {
+      return cb(new Error('Invalid file type'), false);
+    }
+
+    if (file.size > maxSize) {
+      return cb(new Error('File size exceeds limit'), false);
+    }
+
+    cb(null, true);
+  } catch (err) {
+    cb(err, false);
+  }
+};
 
 const messageUpload = multer({
-  storage: storage,
-  fileFilter: generalFileFilter
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1
+  }
 });
 
-// A helper function to resize images if needed
-async function resizeImage(filePath, width = 800, height = 800) {
-  const newFilePath = filePath.replace(/(\.\w+)$/, '-resized$1');
+const processImage = async (filePath) => {
   try {
-    await sharp(filePath)
-      .resize({ width, height, fit: 'inside' })
-      .toFile(newFilePath);
-  } catch (sharpErr) {
-    console.error('Error resizing image:', sharpErr);
-    throw sharpErr;
-  }
-
-  try {
-    if (await fsPromises.access(filePath).then(() => true).catch(() => false)) {
-      await fsPromises.unlink(filePath);
+    const metadata = await sharp(filePath).metadata();
+    const needsResize = metadata.width > 800 || metadata.height > 800;
+    
+    if (needsResize) {
+      await sharp(filePath)
+        .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+        .toFormat('webp')
+        .toFile(`${filePath}.webp`);
+      
+      await fs.unlink(filePath);
+      await fs.rename(`${filePath}.webp`, filePath);
     }
-  } catch (unlinkErr) {
-    console.error('Error deleting original file:', unlinkErr);
-  }
 
-  try {
-    await fsPromises.rename(newFilePath, filePath);
-  } catch (renameErr) {
-    console.error('Error renaming resized file:', renameErr);
+    if (metadata.format !== 'webp') {
+      await sharp(filePath)
+        .toFormat('webp')
+        .toFile(`${filePath}.webp`);
+      
+      await fs.unlink(filePath);
+      await fs.rename(`${filePath}.webp`, filePath);
+    }
+  } catch (err) {
+    await fs.unlink(filePath);
+    throw err;
   }
-}
+};
 
 module.exports = {
-  gigUpload,
   messageUpload,
-  resizeImage
+  processImage
 };

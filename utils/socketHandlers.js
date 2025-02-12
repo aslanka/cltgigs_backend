@@ -1,14 +1,20 @@
 // utils/socketHandlers.js
 const jwt = require('jsonwebtoken');
+const cookie = require('cookie');
 const Notification = require('../models/Notification');
 
 // Store online users for notifications
 let onlineUsers = {}; // { userId: socketId }
 
 function setupSocketIO(io) {
-  // Middleware to verify JWT on connection
+  // Middleware to verify JWT from cookies on connection
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+    console.log('Handshake cookies:', socket.handshake.headers.cookie);
+    let token;
+    if (socket.handshake.headers.cookie) {
+      const cookies = cookie.parse(socket.handshake.headers.cookie);
+      token = cookies.token;
+    }
     if (!token) return next(new Error('No token provided'));
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -50,7 +56,7 @@ function setupSocketIO(io) {
 
     // --- New Notification Functionality ---
     socket.on('newNotification', (notification) => {
-      // Emit the notification to the recipient
+      // Emit the notification to the recipient using their stored socket id
       const recipientSocketId = onlineUsers[notification.user_id];
       if (recipientSocketId) {
         io.to(recipientSocketId).emit('newNotification', notification);

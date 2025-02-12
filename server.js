@@ -1,8 +1,5 @@
-if (process.env.NODE_ENV === 'test') {
-  require('dotenv').config({ path: '.env.test' });
-} else {
-  require('dotenv').config();
-}
+// server.js (Main application file) - CORS and Cookie Domain Fix
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -14,8 +11,9 @@ const passport = require('passport');
 const http = require('http');
 const { init } = require('./utils/socketIOInstance');
 const { setupSocketIO } = require('./utils/socketHandlers');
+const cookieParser = require('cookie-parser');
 
-// Import Routes
+// Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const gigRoutes = require('./routes/gigRoutes');
@@ -28,90 +26,72 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
 const bookmarkRoutes = require('./routes/bookmarkRoutes');
 
-// Initialize Express app
 const app = express();
 app.set('trust proxy', 1);
 
-// Create HTTP server
+// HTTP server + Socket.IO
 const server = http.createServer(app);
-
-// Initialize Socket.IO
 const io = init(server);
 setupSocketIO(io);
 app.set('io', io);
 
-// Environment variables
-const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
-
-// Middleware
-app.use(cors({
+// CORS Setup - Explicitly allow Cache-Control
+const corsOptions = {
   origin: (origin, callback) => {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
+    //console.log("Allowed Origins:", allowedOrigins);
+    //console.log('hi');
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error(`Origin ${origin} not allowed`));
     }
   },
-  methods: process.env.ALLOWED_METHODS.split(','),
-  credentials: true
-}));
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with', 'Cache-Control'] // ADD 'Cache-Control' here
+};
+app.use(cors(corsOptions));
 
+// Security Middlewares
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://apis.google.com"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https://*.golockedin.com"],
-      connectSrc: ["'self'", process.env.FRONTEND_ORIGIN]
-    }
-    
-  },
-  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }
+  contentSecurityPolicy: false, // Temporarily disable for testing
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
 }));
-
 app.use(xss());
-app.use(express.json());
 
-// Rate Limiter
+// Rate Limiting
 const limiter = rateLimit({
-  windowMs: process.env.RATE_LIMIT_WINDOW,
-  max: parseInt(process.env.RATE_LIMIT_MAX)
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW, 10), // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX, 10)         // 100 requests
 });
 app.use(limiter);
+
+// Body Parsing
+app.use(express.json());
+app.use(cookieParser()); // Use cookie-parser middleware
 
 // Passport initialization
 app.use(passport.initialize());
 
-// Static folder with CORS headers
-app.use('/uploads', (req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Methods', 'GET');
-  next();
-});
+// Static Files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB Connection
-
-const mongooseOptions = {
+// MongoDB
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-  ...(process.env.NODE_ENV === 'test' ? { 
-    useCreateIndex: true,
-    useFindAndModify: false 
-  } : {})
-};
-mongoose.connect(process.env.MONGO_URI, mongooseOptions)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+  useUnifiedTopology: true
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
 
-// Passport strategies
+// Passport Strategies
 require('./strategies/passportStrategies');
 
 // Routes
@@ -127,12 +107,13 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 
-// Server startup
+// Start Server
 const PORT = process.env.SERVER_PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+// Export for testing - Keeping this as it was in original code, assuming you still need it for tests
 if (process.env.NODE_ENV === 'test') {
   module.exports = { app, server };
 }
